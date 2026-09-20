@@ -1,0 +1,56 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: docai
+      POSTGRES_PASSWORD: docai
+      POSTGRES_DB: document_ai
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # runs only on first boot of an empty volume
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docai -d document_ai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  ai-service:
+    build: ../ai-service
+    restart: unless-stopped
+    env_file: ../ai-service/.env
+    environment:
+      DATABASE_URL: postgresql://docai:docai@postgres:5432/document_ai
+      STORAGE_DRIVER: local
+      STORAGE_DIR: /data/storage
+    ports:
+      - "8000:8000"
+    volumes:
+      - storage:/data/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  server:
+    build: ../server
+    restart: unless-stopped
+    env_file: ../server/.env
+    environment:
+      DATABASE_URL: postgresql://docai:docai@postgres:5432/document_ai
+      AI_SERVICE_URL: http://ai-service:8000
+      STORAGE_DRIVER: local
+      STORAGE_DIR: /data/storage
+    ports:
+      - "4000:4000"
+    volumes:
+      - storage:/data/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  storage:
