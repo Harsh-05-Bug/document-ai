@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { createSession, askQuestion } from "../../api/chat.api.js";
 import SourceCitation from "./SourceCitation.jsx";
 import RetrievalTrace from "./RetrievalTrace.jsx";
@@ -60,7 +61,7 @@ export default function ChatAssistant({ documentId, placeholder }) {
           ) : (
             <div className="turn assistant" key={i}>
               <div className={message.grounded ? "answer" : "answer ungrounded"}>
-                {message.content}
+                <ReactMarkdown>{message.content}</ReactMarkdown>
               </div>
               <SourceCitation sources={message.sources} />
               {!message.grounded && (
