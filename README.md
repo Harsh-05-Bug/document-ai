@@ -22,6 +22,9 @@ surface through the model's wording.
 - **Grounded answers with structural citations.** Sources come from the
   chunks actually retrieved, not parsed from model output, so a citation
   can't point at something the model never saw.
+- **Follow-up questions that work.** "Tell me more about this" is rewritten
+  into a standalone question before searching, so conversations flow
+  naturally without weakening the permission boundary.
 - **Measurable refusal.** Below a similarity floor the LLM is never called;
   the app says so, and the dashboard counts how often it happens.
 - **Provider-agnostic LLM layer.** Runs on Google Gemini through its
@@ -43,12 +46,14 @@ surface through the model's wording.
 
 ```
 Browser ──► Node ──────────────────────────────► Python ──► Postgres
-            1. verify JWT                        4. embed question
-            2. compute allowed_document_ids      5. vector search,
-               from role + explicit shares           filtered to allowed ids
-            3. forward question + that list      6. build prompt from top-k
-                                                 7. call LLM
-            9. persist both turns + audit  ◄──── 8. answer + structured sources
+            1. verify JWT                        5. rewrite follow-up into
+            2. compute allowed_document_ids         a standalone question
+               from role + explicit shares       6. embed it
+            3. load recent turns of this         7. vector search,
+               user's own conversation              filtered to allowed ids
+            4. forward question, history         8. build prompt from top-k
+               and allowed ids                   9. call LLM
+           11. persist both turns + audit  ◄──── 10. answer + structured sources
 ```
 
 **Step 2 is the part that matters.** Filtering after retrieval would already
@@ -85,6 +90,7 @@ admin (Technology department):
 | Employee, not shared — asks about its contents | "couldn't find", no sources | ✅ |
 | Manager, different department — asks about it | blocked | ✅ |
 | Admin shares with employee — employee asks again | answered, with citations | ✅ |
+| Follow-up "tell me more about this" after a SWOT question | rewritten to "Tell me more about SWOT analysis." and answered | ✅ |
 
 The second row is the one that matters: the UI hiding a document proves
 little if the search can still reach it.
@@ -180,7 +186,7 @@ ask a question about it.
 | `OPENAI_BASE_URL` | `https://generativelanguage.googleapis.com/v1beta/openai/` | omit to use OpenAI directly |
 | `EMBEDDING_MODEL` | `gemini-embedding-001` | |
 | `EMBEDDING_DIM` | `1536` | must match `VECTOR(n)` in the migration |
-| `LLM_MODEL` | `gemini-3.1-flash-lite` | |
+| `LLM_MODEL` | `gemini-3.1-flash-lite` | used for answers and for rewriting follow-ups |
 | `TOP_K` | `5` | passages retrieved per question |
 | `SIMILARITY_THRESHOLD` | `0.35` | cosine floor; below it, the LLM isn't called |
 | `CHUNK_TOKENS` / `CHUNK_OVERLAP` | `600` / `80` | |
@@ -188,6 +194,26 @@ ask a question about it.
 ---
 
 ## Engineering notes
+
+**Follow-up questions are rewritten, not appended.** Vector search can't
+match "tell me more about this" — those words mean nothing without the
+conversation. Rather than stuffing old messages into the answer prompt, the
+last six turns are used for one purpose only: rewriting the latest message
+into a standalone question ("Tell me more about SWOT analysis."). That
+rewritten question is what gets embedded, searched and answered. Three
+properties follow from this:
+
+- **The permission filter is untouched.** The rewritten question goes
+  through exactly the same filtered search as any other.
+- **History can't leak.** Node loads it from the user's own verified session,
+  so it only ever contains questions they asked and answers they were
+  already shown.
+- **It fails safe.** If the rewrite call errors or times out, the original
+  question is searched instead. Memory is an improvement, never a new way
+  for a question to fail.
+
+The rewritten question is returned as `search_query` and stored in the audit
+log, so every follow-up's interpretation can be inspected.
 
 **Switching from OpenAI to Gemini without rewriting the client.** Gemini
 exposes an OpenAI-compatible endpoint, so the existing `openai` SDK calls stay
@@ -199,6 +225,12 @@ returns 3072-dimensional vectors by default, but pgvector's HNSW index supports
 at most 2000. Rather than dropping the index or changing the schema, the
 service requests reduced-dimension output (`dimensions=1536`), which the model
 supports natively. The schema, index and similarity threshold stay as they were.
+
+**Answer length adapts to the question.** Simple factual questions get a
+sentence or two; requests to "explain" or "describe" get fuller answers with
+markdown lists. The model is still barred from padding beyond what the
+retrieved passages say, so a detailed question about a thin document gets a
+short, honest answer rather than an invented long one.
 
 **Embedding dimension is checked at runtime.** If the model and the
 `VECTOR(n)` column ever disagree, `embeddings.py` fails loudly instead of
@@ -230,13 +262,17 @@ would be created on an empty table. HNSW works from the first row.
 | `No matching distribution found for psycopg-binary` | Python 3.13+ | use Python 3.12 |
 | `models/... is not found for API version` | retired model name | list available models with `client.models.list()` |
 | UI shows "Something went wrong on our side" | Node forwards a 5xx from the AI service | the real traceback is in the uvicorn terminal |
+| uvicorn stuck on "Waiting for background tasks to complete" | a file was saved while a request was in flight, and the reload hung | Ctrl+C and start uvicorn again |
 
 ---
 
 ## Known limitations
 
-- **No conversation memory.** Each question is embedded independently, so
-  follow-ups like "tell me more about this" have nothing to match against.
+- **Memory lasts one page visit.** A new conversation starts each time the
+  Ask page loads; past conversations are stored but there's no UI yet to
+  reopen them.
+- **Follow-ups cost one extra model call.** Rewriting runs only when there is
+  history, but it does add latency and quota usage to every follow-up.
 - **Background tasks aren't durable.** A restart mid-ingestion leaves the
   document in `processing`. A real deployment needs a job queue.
 - **Free-tier data terms.** On Gemini's free tier, inputs may be used to
@@ -246,6 +282,7 @@ would be created on an empty table. HNSW works from the first row.
 
 ## Worth building next
 
-Automated permission tests · conversation memory for follow-up questions ·
-streaming answers (SSE) · a durable job queue (BullMQ / Celery) · rate
-limiting on the question endpoint · automatic tagging at ingest time.
+Automated permission tests · streaming answers (SSE) · a conversation list to
+reopen past chats · retry and delete for failed uploads · a durable job queue
+(BullMQ / Celery) · rate limiting on the question endpoint · automatic tagging
+at ingest time.
