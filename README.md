@@ -5,6 +5,8 @@ spreadsheets; they're split into passages, embedded, and stored in Postgres
 with pgvector. Ask a question and get an answer drawn only from documents
 **you are allowed to read**, with the file and page cited for every claim.
 
+![An answer with cited sources, page numbers and similarity scores](docs/screenshot.png)
+
 The interesting problem isn't retrieval — it's making sure retrieval can't
 leak. Access control is enforced inside the vector search itself, so a
 document you can't read is never ranked, never enters the prompt, and can't
