@@ -1,7 +1,7 @@
 import { pool } from "../db/pool.js";
 import { ApiError } from "../utils/ApiError.js";
 import { getAccessibleDocumentIds } from "./permission.service.js";
-import { requestQuery } from "./aiClient.service.js";
+import { requestQuery, streamQuery } from "./aiClient.service.js";
 import { logAudit } from "./audit.service.js";
 
 // How many earlier messages (user + assistant) to send for resolving
@@ -68,14 +68,16 @@ async function getRecentHistory(sessionId) {
 }
 
 /**
- * The permission boundary in one function.
+ * The permission boundary, shared by the streaming and non-streaming paths.
  *
  *   1. work out which documents this user may read
- *   2. hand that list to the AI service, which filters the vector search
+ *   2. that list goes to the AI service, which filters the vector search
  *      BEFORE ranking — not as a post-filter on the model's answer
- *   3. persist both turns plus the citations
+ *
+ * Also loads history (before saving the new question, so the question
+ * isn't part of its own context) and records the user's turn.
  */
-export async function askQuestion({ user, sessionId, question, documentId }) {
+async function prepareQuestion({ user, sessionId, question, documentId }) {
   if (!question?.trim()) throw ApiError.badRequest("Ask a question first");
   await assertOwnsSession(sessionId, user.id);
 
@@ -88,34 +90,30 @@ export async function askQuestion({ user, sessionId, question, documentId }) {
     if (!allowedIds.length) throw ApiError.forbidden();
   }
 
-  // Read history BEFORE saving the new question, so the question
-  // isn't included in its own context.
   const history = await getRecentHistory(sessionId);
+  const text = question.trim();
 
   await pool.query(
     `INSERT INTO chat_messages (session_id, role, content) VALUES ($1,'user',$2)`,
-    [sessionId, question.trim()]
+    [sessionId, text]
   );
 
-  const started = Date.now();
-  const result = await requestQuery({
-    question: question.trim(),
-    allowedDocumentIds: allowedIds,
-    history,
-  });
-  const latency = Date.now() - started;
+  return { text, allowedIds, history };
+}
 
+/** Persist the assistant's turn, name the conversation, and audit it. */
+async function saveAnswer({ user, sessionId, documentId, text, allowedIds, answer, sources, searchQuery, latency }) {
   const { rows } = await pool.query(
     `INSERT INTO chat_messages (session_id, role, content, sources, latency_ms)
      VALUES ($1,'assistant',$2,$3,$4) RETURNING *`,
-    [sessionId, result.answer, JSON.stringify(result.sources || []), latency]
+    [sessionId, answer, JSON.stringify(sources), latency]
   );
 
   // Name the conversation after its first question.
   await pool.query(
     `UPDATE chat_sessions SET title = $2
       WHERE id = $1 AND (title IS NULL OR title = 'New conversation')`,
-    [sessionId, question.trim().slice(0, 80)]
+    [sessionId, text.slice(0, 80)]
   );
 
   logAudit({
@@ -123,13 +121,73 @@ export async function askQuestion({ user, sessionId, question, documentId }) {
     action: "chat.query",
     documentId: documentId || null,
     metadata: {
-      question: question.trim().slice(0, 500),
-      search_query: (result.search_query || "").slice(0, 500),
-      sources: (result.sources || []).length,
+      question: text.slice(0, 500),
+      search_query: (searchQuery || "").slice(0, 500),
+      sources: sources.length,
       searched_documents: allowedIds.length,
       latency_ms: latency,
     },
   });
 
-  return { ...rows[0], grounded: (result.sources || []).length > 0 };
+  return { ...rows[0], grounded: sources.length > 0 };
+}
+
+/** Ask and wait for the complete answer. */
+export async function askQuestion({ user, sessionId, question, documentId }) {
+  const { text, allowedIds, history } = await prepareQuestion({ user, sessionId, question, documentId });
+
+  const started = Date.now();
+  const result = await requestQuery({ question: text, allowedDocumentIds: allowedIds, history });
+
+  return saveAnswer({
+    user, sessionId, documentId, text, allowedIds,
+    answer: result.answer,
+    sources: result.sources || [],
+    searchQuery: result.search_query,
+    latency: Date.now() - started,
+  });
+}
+
+/**
+ * Ask and receive the answer as it's written.
+ *
+ * onEvent is called with:
+ *   { type: "status", stage: "generating" }  retrieval finished, writing begins
+ *   { type: "delta", text }                  a piece of the answer
+ *   { type: "done", message }                the saved message, with sources
+ *
+ * The answer is saved only once it's complete, so a stream that breaks
+ * part-way never leaves a half-written answer in the history.
+ */
+export async function askQuestionStream({ user, sessionId, question, documentId, onEvent }) {
+  const { text, allowedIds, history } = await prepareQuestion({ user, sessionId, question, documentId });
+
+  const started = Date.now();
+  let searchQuery = "";
+  let final = null;
+
+  for await (const event of streamQuery({ question: text, allowedDocumentIds: allowedIds, history })) {
+    if (event.type === "meta") {
+      searchQuery = event.search_query || "";
+      onEvent({ type: "status", stage: "generating" });
+    } else if (event.type === "delta") {
+      onEvent({ type: "delta", text: event.text });
+    } else if (event.type === "done") {
+      final = event;
+    } else if (event.type === "error") {
+      throw new ApiError(502, event.message || "The answer stopped part-way through");
+    }
+  }
+
+  if (!final) throw new ApiError(502, "The answer stream ended unexpectedly");
+
+  const message = await saveAnswer({
+    user, sessionId, documentId, text, allowedIds,
+    answer: final.answer,
+    sources: final.sources || [],
+    searchQuery,
+    latency: Date.now() - started,
+  });
+
+  onEvent({ type: "done", message });
 }

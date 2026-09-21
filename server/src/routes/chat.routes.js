@@ -9,5 +9,6 @@ router.get("/sessions", chat.listSessions);
 router.post("/sessions", chat.createSession);
 router.get("/sessions/:sessionId", chat.getSession);
 router.post("/sessions/:sessionId/messages", chat.ask);
+router.post("/sessions/:sessionId/messages/stream", chat.askStream);
 
 export default router;

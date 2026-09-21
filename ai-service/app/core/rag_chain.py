@@ -1,4 +1,5 @@
 import logging
+from typing import Iterator
 
 from openai import OpenAI
 
@@ -33,33 +34,23 @@ def _format_context(chunks: list[dict]) -> str:
     return "\n\n---\n\n".join(blocks)
 
 
-def generate_answer(question: str, chunks: list[dict]) -> tuple[str, list[dict]]:
+def _answer_messages(question: str, chunks: list[dict]) -> list[dict]:
+    return [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": f"Context passages:\n\n{_format_context(chunks)}\n\nQuestion: {question}",
+        },
+    ]
+
+
+def build_sources(chunks: list[dict]) -> list[dict]:
     """
-    Returns (answer, sources). Sources are structured, not parsed out of
-    the model's prose, so a citation can never point at a document that
+    Sources are built from the retrieved chunks, not parsed out of the
+    model's prose, so a citation can never point at a document that
     wasn't actually retrieved.
     """
-    if not chunks:
-        return NO_ANSWER, []
-
-    completion = client.chat.completions.create(
-        model=LLM_MODEL,
-        temperature=0,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": f"Context passages:\n\n{_format_context(chunks)}\n\nQuestion: {question}",
-            },
-        ],
-    )
-    answer = (completion.choices[0].message.content or "").strip()
-
-    # If the model declined, don't attach citations to a non-answer.
-    if answer.startswith(NO_ANSWER):
-        return NO_ANSWER, []
-
-    sources = [
+    return [
         {
             "index": i,
             "document_id": chunk["document_id"],
@@ -70,7 +61,45 @@ def generate_answer(question: str, chunks: list[dict]) -> tuple[str, list[dict]]
         }
         for i, chunk in enumerate(chunks, start=1)
     ]
-    return answer, sources
+
+
+def generate_answer(question: str, chunks: list[dict]) -> tuple[str, list[dict]]:
+    """Returns (answer, sources) in one call. Used by the non-streaming endpoint."""
+    if not chunks:
+        return NO_ANSWER, []
+
+    completion = client.chat.completions.create(
+        model=LLM_MODEL,
+        temperature=0,
+        messages=_answer_messages(question, chunks),
+    )
+    answer = (completion.choices[0].message.content or "").strip()
+
+    # If the model declined, don't attach citations to a non-answer.
+    if answer.startswith(NO_ANSWER):
+        return NO_ANSWER, []
+
+    return answer, build_sources(chunks)
+
+
+def stream_answer(question: str, chunks: list[dict]) -> Iterator[str]:
+    """
+    Yields the answer a piece at a time as the model writes it.
+    The caller decides afterwards whether sources apply, because that
+    depends on the complete answer.
+    """
+    stream = client.chat.completions.create(
+        model=LLM_MODEL,
+        temperature=0,
+        messages=_answer_messages(question, chunks),
+        stream=True,
+    )
+    for event in stream:
+        if not event.choices:
+            continue
+        text = event.choices[0].delta.content
+        if text:
+            yield text
 
 
 def summarize_chunks(filename: str, chunks: list[str]) -> str:
