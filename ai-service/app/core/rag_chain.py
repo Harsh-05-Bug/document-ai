@@ -14,7 +14,12 @@ Rules:
 - If the passages don't contain the answer, say exactly: "I couldn't find this in your documents." Do not guess or fill gaps.
 - Cite the passage number in square brackets after each claim, like [2].
 - Quote figures, dates and policy terms exactly as they appear.
-- Be concise. Two or three sentences is usually enough.
+
+Length and format:
+- Match the depth of the question. A simple factual question gets one or two sentences.
+- If the user asks to explain, describe, or give details, write a fuller answer that uses everything relevant in the passages.
+- When there are several distinct points, use a short markdown bullet list.
+- Never pad the answer with information that isn't in the passages. A short grounded answer is better than a long invented one.
 """
 
 NO_ANSWER = "I couldn't find this in your documents."
