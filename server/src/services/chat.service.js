@@ -4,6 +4,10 @@ import { getAccessibleDocumentIds } from "./permission.service.js";
 import { requestQuery } from "./aiClient.service.js";
 import { logAudit } from "./audit.service.js";
 
+// How many earlier messages (user + assistant) to send for resolving
+// follow-up questions. Three exchanges is enough for "it" and "this".
+const HISTORY_LIMIT = 6;
+
 export async function createSession(userId, title) {
   const { rows } = await pool.query(
     `INSERT INTO chat_sessions (user_id, title) VALUES ($1,$2) RETURNING *`,
@@ -45,6 +49,25 @@ export async function getSessionWithMessages(sessionId, userId) {
 }
 
 /**
+ * The most recent turns of a conversation, oldest first.
+ *
+ * Only called after assertOwnsSession, so the history can only contain
+ * questions this user asked and answers this user was already shown.
+ * It cannot carry content from documents they aren't allowed to read.
+ */
+async function getRecentHistory(sessionId) {
+  const { rows } = await pool.query(
+    `SELECT role, content
+       FROM chat_messages
+      WHERE session_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2`,
+    [sessionId, HISTORY_LIMIT]
+  );
+  return rows.reverse();
+}
+
+/**
  * The permission boundary in one function.
  *
  *   1. work out which documents this user may read
@@ -65,13 +88,21 @@ export async function askQuestion({ user, sessionId, question, documentId }) {
     if (!allowedIds.length) throw ApiError.forbidden();
   }
 
+  // Read history BEFORE saving the new question, so the question
+  // isn't included in its own context.
+  const history = await getRecentHistory(sessionId);
+
   await pool.query(
     `INSERT INTO chat_messages (session_id, role, content) VALUES ($1,'user',$2)`,
     [sessionId, question.trim()]
   );
 
   const started = Date.now();
-  const result = await requestQuery({ question: question.trim(), allowedDocumentIds: allowedIds });
+  const result = await requestQuery({
+    question: question.trim(),
+    allowedDocumentIds: allowedIds,
+    history,
+  });
   const latency = Date.now() - started;
 
   const { rows } = await pool.query(
@@ -93,6 +124,7 @@ export async function askQuestion({ user, sessionId, question, documentId }) {
     documentId: documentId || null,
     metadata: {
       question: question.trim().slice(0, 500),
+      search_query: (result.search_query || "").slice(0, 500),
       sources: (result.sources || []).length,
       searched_documents: allowedIds.length,
       latency_ms: latency,

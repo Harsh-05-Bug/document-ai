@@ -38,9 +38,9 @@ export const requestIngest = ({ documentId, storageKey, mimeType }) =>
     document_id: documentId, storage_key: storageKey, mime_type: mimeType,
   }, { timeoutMs: 15_000 });
 
-export const requestQuery = ({ question, allowedDocumentIds, topK }) =>
+export const requestQuery = ({ question, allowedDocumentIds, topK, history = [] }) =>
   post("/internal/query", {
-    question, allowed_document_ids: allowedDocumentIds, top_k: topK,
+    question, allowed_document_ids: allowedDocumentIds, top_k: topK, history,
   });
 
 export const requestSemanticSearch = ({ question, allowedDocumentIds, topK }) =>

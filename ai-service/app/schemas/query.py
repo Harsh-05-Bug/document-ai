@@ -3,10 +3,18 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 
+class ChatTurn(BaseModel):
+    role: str
+    content: str
+
+
 class QueryRequest(BaseModel):
     question: str
     allowed_document_ids: List[str] = Field(default_factory=list)
     top_k: Optional[int] = None
+    # Earlier turns of the conversation, oldest first. Used only to rewrite
+    # follow-up questions; never passed to retrieval or the answer prompt.
+    history: List[ChatTurn] = Field(default_factory=list)
 
 
 class Source(BaseModel):
@@ -23,6 +31,8 @@ class QueryResponse(BaseModel):
     sources: List[Source]
     searched_documents: int
     retrieved_chunks: int
+    # The standalone question actually searched for, after rewriting.
+    search_query: Optional[str] = None
 
 
 class SearchHit(BaseModel):
