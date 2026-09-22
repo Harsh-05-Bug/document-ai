@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
+import ThemeSwitch from "./ThemeSwitch.jsx";
 
 export default function Layout() {
   const { user, signOut } = useAuth();
@@ -29,6 +30,8 @@ export default function Layout() {
             </button>
           </div>
         </div>
+
+        <ThemeSwitch />
       </aside>
 
       <main className="main">

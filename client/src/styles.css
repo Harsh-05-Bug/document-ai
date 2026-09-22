@@ -1,16 +1,68 @@
-:root {
+/* ---------------------------------------------------------- themes
+   Every colour in the app resolves through these variables, so a theme
+   is a block of values rather than a set of overrides scattered through
+   the stylesheet. Add a theme by adding one [data-theme] block.        */
+
+:root,
+[data-theme="light"] {
   --paper:  #f3f5f4;
   --surface:#ffffff;
   --ink:    #1a2b26;
   --muted:  #5d6f68;
   --line:   #d8e0dc;
   --accent: #1a5f4a;
-  --accent-soft: #e6f0eb;
+  --accent-hover: #164f3e;
+  --accent-ink:   #ffffff;
+  --accent-soft:  #e6f0eb;
   --cite:   #8a6524;
   --ok:     #1a7f52;
   --warn:   #a4501f;
   --danger: #a32f2f;
+  --highlight: #fdf1cf;
+  --shadow: none;
+}
 
+/* Night: the same restrained palette, inverted. Backgrounds stay warm
+   rather than pure black so long reading sessions don't glare.         */
+[data-theme="dark"] {
+  --paper:  #141917;
+  --surface:#1c2320;
+  --ink:    #e4ebe7;
+  --muted:  #93a39c;
+  --line:   #2c3733;
+  --accent: #5fbf9a;
+  --accent-hover: #74cfab;
+  --accent-ink:   #0d1412;
+  --accent-soft:  #22332c;
+  --cite:   #d0a765;
+  --ok:     #5fbf9a;
+  --warn:   #d99155;
+  --danger: #e07a7a;
+  --highlight: #4a3f1d;
+  --shadow: none;
+}
+
+/* Nocturne: deep indigo with a faint glow on raised surfaces. Distinct
+   from Night at a glance, still quiet enough to read policy documents in. */
+[data-theme="nocturne"] {
+  --paper:  #0d0f1c;
+  --surface:#161a2e;
+  --ink:    #e6e8f5;
+  --muted:  #949ac2;
+  --line:   #262c48;
+  --accent: #8b7cf6;
+  --accent-hover: #a394f8;
+  --accent-ink:   #0d0f1c;
+  --accent-soft:  #241f47;
+  --cite:   #6fd3e0;
+  --ok:     #5ed4a8;
+  --warn:   #e0a35c;
+  --danger: #f2788f;
+  --highlight: #33305e;
+  --shadow: 0 1px 24px rgba(110, 95, 220, 0.10);
+}
+
+:root {
   --sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --serif: Newsreader, Iowan Old Style, Georgia, serif;
 }
@@ -25,6 +77,7 @@ body {
   font-size: 15px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 h1, h2, h3 { font-family: var(--serif); font-weight: 500; letter-spacing: -0.01em; margin: 0; }
@@ -45,8 +98,8 @@ button {
 }
 button:hover:not(:disabled) { border-color: var(--accent); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
-button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-button.primary:hover:not(:disabled) { background: #164f3e; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+button.primary:hover:not(:disabled) { background: var(--accent-hover); }
 button.quiet { border-color: transparent; background: transparent; color: var(--muted); padding: 4px 8px; }
 button.quiet:hover { color: var(--ink); }
 
@@ -90,6 +143,20 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 .rail .who { margin-top: auto; font-size: 13px; color: var(--muted); }
 .rail .who strong { display: block; color: var(--ink); font-weight: 500; }
 
+/* ----------------------------------------------------- theme switch */
+.theme-switch { display: flex; gap: 2px; border: 1px solid var(--line); border-radius: 3px; padding: 2px; }
+.theme-switch button {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 5px 4px;
+  border-radius: 2px;
+}
+.theme-switch button:hover:not(.active) { color: var(--ink); }
+.theme-switch button.active { background: var(--accent-soft); color: var(--accent); font-weight: 500; }
+
 .main { padding: 32px 40px 64px; max-width: 1100px; }
 .page-head { display: flex; align-items: baseline; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
 .page-head p { color: var(--muted); margin: 4px 0 0; max-width: 62ch; }
@@ -130,7 +197,15 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 .dropzone strong { color: var(--ink); }
 
 /* ----------------------------------------------------------- chat */
-.chat { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; display: flex; flex-direction: column; min-height: 460px; }
+.chat {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  min-height: 460px;
+}
 .chat-log { padding: 20px; display: flex; flex-direction: column; gap: 22px; flex: 1; }
 .turn.user { align-self: flex-end; max-width: 78%; background: var(--accent-soft); padding: 9px 13px; border-radius: 3px; }
 .turn.assistant { max-width: 82%; }
@@ -171,7 +246,7 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 .stat .label { font-size: 13px; color: var(--muted); }
 
 .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 28px; }
-.panel { background: var(--surface); border: 1px solid var(--line); padding: 18px 20px; }
+.panel { background: var(--surface); border: 1px solid var(--line); padding: 18px 20px; box-shadow: var(--shadow); }
 .panel h3 { margin-bottom: 12px; }
 .panel ol, .panel ul { margin: 0; padding-left: 18px; }
 .panel li { padding: 3px 0; }
@@ -185,12 +260,12 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 .results { display: flex; flex-direction: column; gap: 2px; margin-top: 18px; }
 .result { background: var(--surface); border: 1px solid var(--line); padding: 12px 14px; text-decoration: none; color: inherit; }
 .result:hover { border-color: var(--accent); }
-.result mark { background: #fdf1cf; }
+.result mark { background: var(--highlight); color: var(--ink); }
 .result .why { font-size: 12px; color: var(--muted); }
 
 /* ----------------------------------------------------------- auth */
 .auth { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
-.auth-card { width: 100%; max-width: 360px; background: var(--surface); border: 1px solid var(--line); padding: 32px; }
+.auth-card { width: 100%; max-width: 360px; background: var(--surface); border: 1px solid var(--line); padding: 32px; box-shadow: var(--shadow); }
 .auth-card h1 { margin-bottom: 6px; }
 .auth-card .field { margin-bottom: 14px; }
 .auth-card label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
@@ -207,6 +282,7 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
   .rail { flex-direction: row; align-items: center; gap: 16px; padding: 12px 16px; overflow-x: auto; }
   .rail nav { flex-direction: row; }
   .rail .who { margin: 0 0 0 auto; }
+  .theme-switch { flex: 0 0 auto; }
   .main { padding: 20px; }
   .columns { grid-template-columns: 1fr; }
 }
