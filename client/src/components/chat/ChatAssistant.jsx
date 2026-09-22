@@ -1,11 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { createSession, askQuestionStream } from "../../api/chat.api.js";
+import { createSession, getSession, askQuestionStream } from "../../api/chat.api.js";
 import SourceCitation from "./SourceCitation.jsx";
 import RetrievalTrace from "./RetrievalTrace.jsx";
 
-export default function ChatAssistant({ documentId, placeholder }) {
-  const [sessionId, setSessionId] = useState(null);
+/**
+ * openSessionId  – load this existing conversation (null = a new one)
+ * onSessionStart – called with the id when a new conversation is created,
+ *                  so the list outside can refresh and highlight it
+ */
+export default function ChatAssistant({ documentId, placeholder, openSessionId, onSessionStart }) {
+  const [sessionId, setSessionId] = useState(openSessionId || null);
   const [messages, setMessages] = useState([]);
   const [question, setQuestion] = useState("");
   const [stage, setStage] = useState(null);
@@ -13,9 +18,35 @@ export default function ChatAssistant({ documentId, placeholder }) {
   const [error, setError] = useState("");
   const logRef = useRef(null);
 
+  // Load an existing conversation, or clear the board for a new one.
   useEffect(() => {
-    createSession().then((s) => setSessionId(s.id)).catch((err) => setError(err.message));
-  }, []);
+    setSessionId(openSessionId || null);
+    setError("");
+
+    if (!openSessionId) {
+      setMessages([]);
+      return;
+    }
+
+    let cancelled = false;
+    getSession(openSessionId)
+      .then((session) => {
+        if (cancelled) return;
+        setMessages(
+          session.messages.map((m) => ({
+            role: m.role,
+            content: m.content,
+            sources: m.sources || [],
+            grounded: (m.sources || []).length > 0,
+          }))
+        );
+      })
+      .catch((err) => !cancelled && setError(err.message));
+
+    // Switching conversations quickly shouldn't let an older response
+    // land after a newer one.
+    return () => { cancelled = true; };
+  }, [openSessionId]);
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" });
@@ -33,7 +64,11 @@ export default function ChatAssistant({ documentId, placeholder }) {
   async function ask(e) {
     e?.preventDefault();
     const text = question.trim();
-    if (!text || !sessionId || busy) return;
+    if (!text || busy) return;
+
+    setQuestion("");
+    setError("");
+    setBusy(true);
 
     // Add the question plus an empty answer that fills in as text arrives.
     setMessages((prev) => [
@@ -41,9 +76,6 @@ export default function ChatAssistant({ documentId, placeholder }) {
       { role: "user", content: text },
       { role: "assistant", content: "", sources: [], grounded: true, streaming: true },
     ]);
-    setQuestion("");
-    setError("");
-    setBusy(true);
 
     // Embedding and searching aren't reported separately by the server,
     // so these first two stages are indicative. "generating" is real.
@@ -54,7 +86,17 @@ export default function ChatAssistant({ documentId, placeholder }) {
     );
 
     try {
-      await askQuestionStream(sessionId, text, documentId, {
+      // Conversations are created on the first question, not on page
+      // load, so browsing the app doesn't leave empty ones behind.
+      let id = sessionId;
+      if (!id) {
+        const session = await createSession();
+        id = session.id;
+        setSessionId(id);
+        onSessionStart?.(id);
+      }
+
+      await askQuestionStream(id, text, documentId, {
         onEvent: (event) => {
           if (event.type === "status") {
             setStage("generating");
@@ -64,6 +106,7 @@ export default function ChatAssistant({ documentId, placeholder }) {
             updateLastMessage((m) => ({ ...m, content: m.content + event.text }));
           } else if (event.type === "done") {
             updateLastMessage(() => ({ role: "assistant", ...event.message }));
+            onSessionStart?.(id);
           }
         },
       });
@@ -125,7 +168,7 @@ export default function ChatAssistant({ documentId, placeholder }) {
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           placeholder="What is the annual leave policy?"
-          disabled={!sessionId}
+          disabled={busy}
         />
         <button className="primary" type="submit" disabled={!question.trim() || busy}>
           Ask

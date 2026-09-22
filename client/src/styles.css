@@ -238,6 +238,30 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 
 .ungrounded { border-left: 2px solid var(--warn); padding-left: 12px; color: var(--muted); }
 
+/* --------------------------------------------- conversation list */
+.ask-layout { display: grid; grid-template-columns: 220px 1fr; gap: 20px; align-items: start; }
+
+.convo-list { display: flex; flex-direction: column; gap: 4px; }
+.convo-list .new { margin-bottom: 8px; }
+.convo-list .heading { font-size: 12px; color: var(--muted); padding: 4px 8px; }
+.convo {
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  padding: 7px 9px;
+  border-radius: 3px;
+  font-size: 13px;
+  line-height: 1.35;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.convo:hover:not(.active) { background: var(--surface); }
+.convo.active { background: var(--accent-soft); color: var(--accent); font-weight: 500; }
+.convo .when { display: block; font-size: 11px; color: var(--muted); font-weight: 400; }
+
 /* ------------------------------------------------------ dashboard */
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); border: 1px solid var(--line); background: var(--surface); }
 .stat { padding: 18px 20px; border-right: 1px solid var(--line); }
@@ -285,4 +309,8 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
   .theme-switch { flex: 0 0 auto; }
   .main { padding: 20px; }
   .columns { grid-template-columns: 1fr; }
+  .ask-layout { grid-template-columns: 1fr; }
+  .convo-list { flex-direction: row; overflow-x: auto; padding-bottom: 6px; }
+  .convo { width: auto; flex: 0 0 auto; }
+  .convo-list .heading { display: none; }
 }
