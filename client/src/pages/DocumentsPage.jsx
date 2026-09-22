@@ -43,7 +43,9 @@ export default function DocumentsPage() {
         </p>
       ) : (
         <div className="doc-list" style={{ marginTop: 24 }}>
-          {visible.map((doc) => <DocumentRow key={doc.id} doc={doc} />)}
+          {visible.map((doc) => (
+            <DocumentRow key={doc.id} doc={doc} onChanged={refresh} />
+          ))}
         </div>
       )}
     </>

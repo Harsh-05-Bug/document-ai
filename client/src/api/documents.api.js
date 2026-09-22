@@ -23,6 +23,11 @@ export const uploadDocument = (file, { folderId, category, onProgress } = {}) =>
 
 export const deleteDocument = (id) => client.delete(`/documents/${id}`);
 
+/** Re-process a failed document. The file is already in storage, so
+ *  nothing is uploaded again. */
+export const retryDocument = (id) =>
+  client.post(`/documents/${id}/retry`).then((r) => r.data);
+
 export const summarizeDocument = (id, refresh = false) =>
   client.post(`/documents/${id}/summary`, null, { params: refresh ? { refresh: 1 } : {} })
     .then((r) => r.data);

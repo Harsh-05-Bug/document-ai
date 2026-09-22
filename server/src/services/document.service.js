@@ -68,6 +68,25 @@ export async function markFailed(id, message) {
   );
 }
 
+/**
+ * Move a failed document back to 'processing' so it can be ingested again.
+ *
+ * The status check is part of the UPDATE itself, so it's atomic: if two
+ * retry requests arrive together, only one of them matches the row and
+ * the other gets nothing back. Returns null when the document wasn't
+ * in the 'failed' state.
+ */
+export async function markProcessing(id) {
+  const { rows } = await pool.query(
+    `UPDATE documents
+        SET status = 'processing', error = NULL, updated_at = now()
+      WHERE id = $1 AND status = 'failed'
+      RETURNING *`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
 export async function moveToFolder(id, folderId) {
   const { rows } = await pool.query(
     `UPDATE documents SET folder_id=$2, updated_at=now() WHERE id=$1 RETURNING *`,

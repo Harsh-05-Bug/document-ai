@@ -14,6 +14,27 @@ const ACCEPTED = new Set([
   "text/markdown",
 ]);
 
+/**
+ * Hand a document to the ai-service for processing.
+ *
+ * The ai-service acknowledges immediately and works in the background,
+ * so a 40MB PDF doesn't hold the HTTP request open. If the dispatch
+ * itself fails, the document is marked failed so it shows up in the UI
+ * as retryable rather than sitting in 'processing' forever.
+ *
+ * Shared by upload and retry so the two can't drift apart.
+ */
+function dispatchIngest(doc) {
+  requestIngest({
+    documentId: doc.id,
+    storageKey: doc.storage_key,
+    mimeType: doc.mime_type,
+  }).catch(async (err) => {
+    console.error("ingest dispatch failed", err);
+    await docs.markFailed(doc.id, err.message);
+  });
+}
+
 export const upload = asyncHandler(async (req, res) => {
   if (!req.file) throw ApiError.badRequest("Choose a file to upload");
   if (!ACCEPTED.has(req.file.mimetype)) {
@@ -34,19 +55,40 @@ export const upload = asyncHandler(async (req, res) => {
     department: req.user.department,
   });
 
-  // The ai-service acknowledges immediately and processes in the
-  // background, so a 40MB PDF doesn't hold the HTTP request open.
-  requestIngest({
-    documentId: doc.id, storageKey, mimeType: doc.mime_type,
-  }).catch(async (err) => {
-    console.error("ingest dispatch failed", err);
-    await docs.markFailed(doc.id, err.message);
-  });
+  dispatchIngest(doc);
 
   logAudit({ userId: req.user.id, action: "document.upload", documentId: doc.id,
     metadata: { filename: doc.filename, size_bytes: doc.size_bytes } });
 
   res.status(201).json(doc);
+});
+
+/**
+ * Re-process a document that failed, using the file already in storage.
+ *
+ * Nothing is re-uploaded: ingestion clears the document's old chunks
+ * before writing new ones, so running it again is safe.
+ */
+export const retry = asyncHandler(async (req, res) => {
+  const doc = await docs.markProcessing(req.params.id);
+
+  // markProcessing only matches documents that are currently failed, so
+  // a null here means someone else already retried it, or it never failed.
+  if (!doc) {
+    const current = await docs.getDocument(req.params.id);
+    throw ApiError.badRequest(
+      current.status === "processing"
+        ? "This document is already being processed"
+        : "Only failed documents can be retried"
+    );
+  }
+
+  dispatchIngest(doc);
+
+  logAudit({ userId: req.user.id, action: "document.retry", documentId: doc.id,
+    metadata: { filename: doc.filename } });
+
+  res.json(doc);
 });
 
 export const list = asyncHandler(async (req, res) => {

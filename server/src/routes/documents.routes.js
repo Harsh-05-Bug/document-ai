@@ -22,6 +22,7 @@ router.get("/:id",            requireDocumentPermission("view"),     docs.detail
 router.get("/:id/status",     requireDocumentPermission("view"),     docs.status);
 router.get("/:id/download",   requireDocumentPermission("download"), docs.download);
 router.post("/:id/summary",   requireDocumentPermission("view"),     docs.summarize);
+router.post("/:id/retry",     requireDocumentPermission("edit"),     docs.retry);
 router.patch("/:id/folder",   requireDocumentPermission("edit"),     docs.move);
 router.post("/:id/tags",      requireDocumentPermission("edit"),     docs.tag);
 router.delete("/:id",         requireDocumentPermission("admin"),    docs.remove);
