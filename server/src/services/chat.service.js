@@ -1,7 +1,19 @@
 import { pool } from "../db/pool.js";
 import { ApiError } from "../utils/ApiError.js";
 import { getAccessibleDocumentIds } from "./permission.service.js";
-import { requestQuery, streamQuery } from "./aiClient.service.js";
+import * as defaultAiClient from "./aiClient.service.js";
+
+/**
+ * The AI client, swappable for tests.
+ *
+ * Node's mock.method can't replace ES module exports, and mocking the
+ * network would test the wrong layer anyway: what matters here is which
+ * document IDs reach the search.
+ */
+let aiClient = defaultAiClient;
+export function setAiClient(client) {
+  aiClient = client || defaultAiClient;
+}
 import { logAudit } from "./audit.service.js";
 
 // How many earlier messages (user + assistant) to send for resolving
@@ -137,7 +149,7 @@ export async function askQuestion({ user, sessionId, question, documentId }) {
   const { text, allowedIds, history } = await prepareQuestion({ user, sessionId, question, documentId });
 
   const started = Date.now();
-  const result = await requestQuery({ question: text, allowedDocumentIds: allowedIds, history });
+  const result = await aiClient.requestQuery({ question: text, allowedDocumentIds: allowedIds, history });
 
   return saveAnswer({
     user, sessionId, documentId, text, allowedIds,
@@ -166,7 +178,7 @@ export async function askQuestionStream({ user, sessionId, question, documentId,
   let searchQuery = "";
   let final = null;
 
-  for await (const event of streamQuery({ question: text, allowedDocumentIds: allowedIds, history })) {
+  for await (const event of aiClient.streamQuery({ question: text, allowedDocumentIds: allowedIds, history })) {
     if (event.type === "meta") {
       searchQuery = event.search_query || "";
       onEvent({ type: "status", stage: "generating" });
