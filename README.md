@@ -28,6 +28,12 @@ test suite rather than a claim.
 - **Follow-up questions that work.** "Tell me more about this" is rewritten
   into a standalone question before searching, so conversations flow
   naturally without weakening the permission boundary.
+- **Conversations you can return to.** Past chats are listed and reopen with
+  their full history and citations. Sessions are created on the first
+  question, not on page load, so browsing doesn't litter the database.
+- **Three themes.** Day, Night and Nocturne, chosen per browser and
+  defaulting to the operating system's preference. Every colour resolves
+  through CSS variables, so a theme is one block of values.
 - **Measurable refusal.** Below a similarity floor the LLM is never called;
   the app says so, and the dashboard counts how often it happens.
 - **Provider-agnostic LLM layer.** Runs on Google Gemini through its
@@ -211,6 +217,14 @@ ask a question about it.
 
 ## Engineering notes
 
+**Theming is a data problem, not a CSS problem.** Every colour in the app
+already resolved through a CSS variable, so adding two themes meant adding
+two `[data-theme]` blocks rather than editing rules. The active theme is an
+attribute on `<html>`, so no component knows or cares which one is on. Three
+values that had been hardcoded — a button hover, button text, and the search
+highlight — had to be lifted into variables first; they were the only places
+the abstraction leaked.
+
 **Streaming without losing the error path.** An HTTP status code is committed
 with the first byte of a response, so a stream that has already started can't
 become a 500. Retrieval and rewriting therefore run *before* the response
@@ -300,8 +314,8 @@ slow connection.
 ## Known limitations
 
 - **No deployment yet.** Runs locally; there's no hosted demo.
-- **Memory lasts one page visit.** A new conversation starts each time the
-  Ask page loads; past conversations are stored but there's no UI to reopen them.
+- **Conversations aren't deletable.** They can be reopened, but there's no
+  way to remove one from the list yet.
 - **Follow-ups cost one extra model call.** Adds latency and quota usage.
 - **Background tasks aren't durable.** A restart mid-ingestion leaves the
   document in `processing`, though it can now be retried from the UI.
@@ -312,6 +326,6 @@ slow connection.
 
 ## Worth building next
 
-A hosted demo · a conversation list to reopen past chats · rate limiting on
-the question endpoint · a durable job queue (BullMQ / Celery) · tests for
+A hosted demo · deleting and renaming conversations · rate limiting on the
+question endpoint · a durable job queue (BullMQ / Celery) · tests for
 ingestion and chunking · automatic tagging at ingest time.
