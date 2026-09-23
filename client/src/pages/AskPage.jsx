@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import ChatAssistant from "../components/chat/ChatAssistant.jsx";
 import ConversationList from "../components/chat/ConversationList.jsx";
-import { listSessions } from "../api/chat.api.js";
+import { listSessions, renameSession, deleteSession } from "../api/chat.api.js";
 
 export default function AskPage() {
   const [sessions, setSessions] = useState([]);
   const [activeId, setActiveId] = useState(null);
+  const [error, setError] = useState("");
   // Changing the key remounts the chat, which clears it for a new
   // conversation without needing a reset path inside the component.
   const [resetKey, setResetKey] = useState(0);
@@ -27,6 +28,31 @@ export default function AskPage() {
     setResetKey((n) => n + 1);
   }
 
+  async function rename(id, title) {
+    // Update on screen first, then reconcile — renaming shouldn't feel
+    // like it needs a round trip.
+    setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, title } : s)));
+    try {
+      await renameSession(id, title);
+    } catch (err) {
+      setError(err.message);
+      refresh();
+    }
+  }
+
+  async function remove(id) {
+    const previous = sessions;
+    setSessions((prev) => prev.filter((s) => s.id !== id));
+    if (id === activeId) startNew();
+
+    try {
+      await deleteSession(id);
+    } catch (err) {
+      setError(err.message);
+      setSessions(previous);
+    }
+  }
+
   return (
     <>
       <div className="page-head">
@@ -39,12 +65,16 @@ export default function AskPage() {
         </div>
       </div>
 
+      {error && <p className="error">{error}</p>}
+
       <div className="ask-layout">
         <ConversationList
           sessions={sessions}
           activeId={activeId}
           onSelect={openSession}
           onNew={startNew}
+          onRename={rename}
+          onDelete={remove}
         />
 
         <ChatAssistant

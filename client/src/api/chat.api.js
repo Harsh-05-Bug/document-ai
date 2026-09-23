@@ -9,6 +9,11 @@ export const listSessions = () => client.get("/chat/sessions").then((r) => r.dat
 
 export const getSession = (id) => client.get(`/chat/sessions/${id}`).then((r) => r.data);
 
+export const renameSession = (id, title) =>
+  client.patch(`/chat/sessions/${id}`, { title }).then((r) => r.data);
+
+export const deleteSession = (id) => client.delete(`/chat/sessions/${id}`);
+
 export const askQuestion = (sessionId, question, documentId) =>
   client.post(`/chat/sessions/${sessionId}/messages`, { question, documentId })
     .then((r) => r.data);
@@ -69,12 +74,3 @@ export async function askQuestionStream(sessionId, question, documentId, { onEve
         .split("\n")
         .filter((line) => line.startsWith("data: "))
         .map((line) => line.slice(6))
-        .join("\n");
-      if (!data) continue;
-
-      const event = JSON.parse(data);
-      if (event.type === "error") throw new Error(event.message);
-      onEvent(event);
-    }
-  }
-}

@@ -13,6 +13,15 @@ export const getSession = asyncHandler(async (req, res) => {
   res.json(await chat.getSessionWithMessages(req.params.sessionId, req.user.id));
 });
 
+export const renameSession = asyncHandler(async (req, res) => {
+  res.json(await chat.renameSession(req.params.sessionId, req.user.id, req.body.title));
+});
+
+export const deleteSession = asyncHandler(async (req, res) => {
+  await chat.deleteSession(req.params.sessionId, req.user.id);
+  res.status(204).end();
+});
+
 export const ask = asyncHandler(async (req, res) => {
   res.json(await chat.askQuestion({
     user: req.user,

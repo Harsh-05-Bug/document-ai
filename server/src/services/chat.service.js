@@ -2,6 +2,11 @@ import { pool } from "../db/pool.js";
 import { ApiError } from "../utils/ApiError.js";
 import { getAccessibleDocumentIds } from "./permission.service.js";
 import * as defaultAiClient from "./aiClient.service.js";
+import { logAudit } from "./audit.service.js";
+
+// How many earlier messages (user + assistant) to send for resolving
+// follow-up questions. Three exchanges is enough for "it" and "this".
+const HISTORY_LIMIT = 6;
 
 /**
  * The AI client, swappable for tests.
@@ -14,11 +19,6 @@ let aiClient = defaultAiClient;
 export function setAiClient(client) {
   aiClient = client || defaultAiClient;
 }
-import { logAudit } from "./audit.service.js";
-
-// How many earlier messages (user + assistant) to send for resolving
-// follow-up questions. Three exchanges is enough for "it" and "this".
-const HISTORY_LIMIT = 6;
 
 export async function createSession(userId, title) {
   const { rows } = await pool.query(
@@ -58,6 +58,35 @@ export async function getSessionWithMessages(sessionId, userId) {
     [sessionId]
   );
   return { ...session, messages: rows };
+}
+
+/**
+ * Rename a conversation.
+ *
+ * The ownership check is part of the UPDATE, so one query both
+ * authorises and acts — no window between checking and writing.
+ */
+export async function renameSession(sessionId, userId, title) {
+  const clean = String(title || "").trim().slice(0, 120);
+  if (!clean) throw ApiError.badRequest("Give the conversation a name");
+
+  const { rows } = await pool.query(
+    `UPDATE chat_sessions SET title = $3
+      WHERE id = $1 AND user_id = $2
+      RETURNING *`,
+    [sessionId, userId, clean]
+  );
+  if (!rows[0]) throw ApiError.notFound("Conversation not found");
+  return rows[0];
+}
+
+/** Delete a conversation. Its messages cascade from the FK definition. */
+export async function deleteSession(sessionId, userId) {
+  const { rowCount } = await pool.query(
+    `DELETE FROM chat_sessions WHERE id = $1 AND user_id = $2`,
+    [sessionId, userId]
+  );
+  if (!rowCount) throw ApiError.notFound("Conversation not found");
 }
 
 /**
