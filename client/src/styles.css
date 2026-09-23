@@ -165,7 +165,7 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 .doc-list { border-top: 1px solid var(--line); }
 .doc-row {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto auto auto;
   gap: 16px;
   align-items: center;
   padding: 14px 4px;
@@ -178,6 +178,15 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 .doc-row .meta { color: var(--muted); font-size: 13px; }
 .doc-row .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
 .tag { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 2px; padding: 1px 6px; }
+
+/* Row actions stay hidden until hover, so the list reads as documents
+   rather than a wall of buttons. */
+.doc-actions { display: flex; gap: 4px; align-items: center; opacity: 0; }
+.doc-row:hover .doc-actions,
+.doc-row:focus-within .doc-actions { opacity: 1; }
+.doc-actions button { font-size: 13px; padding: 4px 9px; }
+.doc-actions button.danger { border-color: transparent; background: transparent; color: var(--muted); padding: 3px 7px; }
+.doc-actions button.danger:hover:not(:disabled) { color: var(--danger); background: var(--paper); }
 
 .pill { font-size: 12px; display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
 .pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
@@ -260,8 +269,6 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 .convo-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .convo .when { display: block; font-size: 11px; color: var(--muted); font-weight: 400; }
 
-/* Actions stay hidden until the row is hovered or focused within, so
-   the list reads as titles rather than a wall of icons. */
 .convo-actions { display: flex; gap: 2px; opacity: 0; }
 .convo:hover .convo-actions,
 .convo:focus-within .convo-actions { opacity: 1; }
@@ -330,4 +337,5 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
   .convo { width: auto; flex: 0 0 auto; }
   .convo-list .heading { display: none; }
   .convo-actions { opacity: 1; }
+  .doc-actions { opacity: 1; }
 }

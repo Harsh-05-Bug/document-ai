@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import StatusPill from "../common/StatusPill.jsx";
-import { retryDocument } from "../../api/documents.api.js";
+import { retryDocument, deleteDocument } from "../../api/documents.api.js";
 
 const formatSize = (bytes) => {
   if (!bytes) return "—";
@@ -11,16 +11,21 @@ const formatSize = (bytes) => {
 };
 
 export default function DocumentRow({ doc, onChanged }) {
-  const [retrying, setRetrying] = useState(false);
+  const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
 
-  async function retry(e) {
-    // The whole row is a link, so stop the click from navigating.
+  // The whole row is a link, so every action has to stop the click
+  // from navigating to the document page.
+  function intercept(e) {
     e.preventDefault();
     e.stopPropagation();
-    if (retrying) return;
+  }
 
-    setRetrying(true);
+  async function retry(e) {
+    intercept(e);
+    if (busy) return;
+
+    setBusy("retry");
     setError("");
     try {
       await retryDocument(doc.id);
@@ -28,7 +33,23 @@ export default function DocumentRow({ doc, onChanged }) {
     } catch (err) {
       setError(err.message);
     } finally {
-      setRetrying(false);
+      setBusy("");
+    }
+  }
+
+  async function remove(e) {
+    intercept(e);
+    if (busy) return;
+    if (!window.confirm(`Delete "${doc.filename}"? This also removes its indexed passages.`)) return;
+
+    setBusy("delete");
+    setError("");
+    try {
+      await deleteDocument(doc.id);
+      onChanged?.();
+    } catch (err) {
+      setError(err.message);
+      setBusy("");
     }
   }
 
@@ -51,11 +72,23 @@ export default function DocumentRow({ doc, onChanged }) {
 
       <span className="meta">{doc.chunk_count ? `${doc.chunk_count} chunks` : ""}</span>
 
-      {doc.status === "failed" && (
-        <button type="button" onClick={retry} disabled={retrying}>
-          {retrying ? "Retrying…" : "Retry"}
+      <span className="doc-actions">
+        {doc.status === "failed" && (
+          <button type="button" onClick={retry} disabled={!!busy}>
+            {busy === "retry" ? "Retrying…" : "Retry"}
+          </button>
+        )}
+        <button
+          type="button"
+          className="danger"
+          title="Delete"
+          aria-label={`Delete ${doc.filename}`}
+          onClick={remove}
+          disabled={!!busy}
+        >
+          {busy === "delete" ? "…" : "×"}
         </button>
-      )}
+      </span>
 
       <StatusPill status={doc.status} chunks={doc.chunk_count} />
     </Link>
