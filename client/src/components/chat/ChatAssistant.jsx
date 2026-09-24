@@ -52,11 +52,20 @@ export default function ChatAssistant({ documentId, placeholder, openSessionId, 
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, stage]);
 
-  // Replace the last message (the answer being streamed) with a new version.
-  function updateLastMessage(update) {
+  /**
+   * Replace the answer currently being streamed.
+   *
+   * A late event can arrive after the placeholder has been removed — for
+   * instance when the request failed and the half-written answer was
+   * dropped. Updating nothing is the correct response; crashing is not.
+   */
+  function updateStreamingMessage(update) {
     setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (!last?.streaming) return prev;
+
       const next = prev.slice();
-      next[next.length - 1] = update(next[next.length - 1]);
+      next[next.length - 1] = update(last);
       return next;
     });
   }
@@ -103,9 +112,9 @@ export default function ChatAssistant({ documentId, placeholder, openSessionId, 
           } else if (event.type === "delta") {
             // First words have arrived: the answer itself now shows progress.
             setStage(null);
-            updateLastMessage((m) => ({ ...m, content: m.content + event.text }));
+            updateStreamingMessage((m) => ({ ...m, content: m.content + event.text }));
           } else if (event.type === "done") {
-            updateLastMessage(() => ({ role: "assistant", ...event.message }));
+            updateStreamingMessage(() => ({ role: "assistant", ...event.message }));
             onSessionStart?.(id);
           }
         },
@@ -141,7 +150,7 @@ export default function ChatAssistant({ documentId, placeholder, openSessionId, 
           return (
             <div className="turn assistant" key={i}>
               <div className={message.grounded ? "answer" : "answer ungrounded"}>
-                <ReactMarkdown>{message.content}</ReactMarkdown>
+                <ReactMarkdown>{message.content || ""}</ReactMarkdown>
               </div>
 
               {!message.streaming && (
