@@ -102,6 +102,8 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 button.primary:hover:not(:disabled) { background: var(--accent-hover); }
 button.quiet { border-color: transparent; background: transparent; color: var(--muted); padding: 4px 8px; }
 button.quiet:hover { color: var(--ink); }
+button.danger-outline { color: var(--danger); }
+button.danger-outline:hover:not(:disabled) { border-color: var(--danger); }
 
 input, select, textarea {
   font: inherit;
@@ -284,6 +286,15 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 .convo-actions button:hover { color: var(--ink); background: var(--paper); }
 
 .convo-edit { font-size: 13px; padding: 6px 8px; }
+
+/* -------------------------------------------------------- summary */
+.summary h1, .summary h2, .summary h3 { font-size: 15px; margin: 16px 0 6px; }
+.summary h1:first-child, .summary h2:first-child, .summary h3:first-child { margin-top: 0; }
+.summary ul, .summary ol { margin: 0 0 12px; padding-left: 20px; }
+.summary li { padding: 2px 0; }
+
+.grant-list { list-style: none; padding: 0; margin: 0 0 14px; }
+.grant-list li { padding: 4px 0; }
 
 /* ------------------------------------------------------ dashboard */
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); border: 1px solid var(--line); background: var(--surface); }

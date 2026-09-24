@@ -74,3 +74,12 @@ export async function askQuestionStream(sessionId, question, documentId, { onEve
         .split("\n")
         .filter((line) => line.startsWith("data: "))
         .map((line) => line.slice(6))
+        .join("\n");
+      if (!data) continue;
+
+      const event = JSON.parse(data);
+      if (event.type === "error") throw new Error(event.message);
+      onEvent(event);
+    }
+  }
+}

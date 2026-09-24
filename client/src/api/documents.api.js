@@ -41,6 +41,9 @@ export const shareDocument = (id, userId, permission) =>
 export const listPermissions = (id) =>
   client.get(`/documents/${id}/permissions`).then((r) => r.data);
 
+export const revokePermission = (id, userId) =>
+  client.delete(`/documents/${id}/permissions/${userId}`);
+
 /** The download route needs the bearer token, so fetch the bytes and
  *  hand the browser an object URL rather than a plain link. */
 export const openDocument = async (id) => {

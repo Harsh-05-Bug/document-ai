@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import ReactMarkdown from "react-markdown";
 import ChatAssistant from "../components/chat/ChatAssistant.jsx";
 import StatusPill from "../components/common/StatusPill.jsx";
 import {
   getDocument, summarizeDocument, deleteDocument,
-  shareDocument, listPermissions, openDocument,
+  shareDocument, listPermissions, revokePermission, openDocument,
 } from "../api/documents.api.js";
 import { listUsers } from "../api/auth.api.js";
 
@@ -22,11 +23,12 @@ export default function DocumentDetailPage() {
       .catch((err) => setError(err.message));
   }, [id]);
 
-  async function summarise() {
+  /** refresh=true asks for a new summary instead of the stored one. */
+  async function summarise(refresh = false) {
     setSummarising(true);
     setError("");
     try {
-      const result = await summarizeDocument(id);
+      const result = await summarizeDocument(id, refresh);
       setSummary(result.summary);
     } catch (err) {
       setError(err.message);
@@ -37,8 +39,12 @@ export default function DocumentDetailPage() {
 
   async function remove() {
     if (!confirm(`Delete ${doc.filename}? Its indexed passages go too.`)) return;
-    await deleteDocument(id);
-    navigate("/documents");
+    try {
+      await deleteDocument(id);
+      navigate("/documents");
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
   if (error && !doc) return <p className="error">{error}</p>;
@@ -61,21 +67,28 @@ export default function DocumentDetailPage() {
       </div>
 
       <div className="row" style={{ marginBottom: 24 }}>
-        <button onClick={summarise} disabled={summarising || doc.status !== "ready"}>
+        <button onClick={() => summarise(!!summary)} disabled={summarising || doc.status !== "ready"}>
           {summarising ? "Summarising…" : summary ? "Regenerate summary" : "Summarise"}
         </button>
         <button type="button" onClick={() => openDocument(id).catch((e) => setError(e.message))}>
           Open original
         </button>
-        {canManage && <button onClick={remove}>Delete</button>}
+        {canManage && <button className="danger-outline" onClick={remove}>Delete</button>}
       </div>
 
       {error && <p className="error">{error}</p>}
 
+      {summarising && !summary && (
+        <p className="notice" style={{ marginBottom: 24 }}>
+          Reading the whole document — this takes longer than a question, since every
+          passage is summarised and then merged.
+        </p>
+      )}
+
       {summary && (
-        <div className="panel" style={{ marginBottom: 24, whiteSpace: "pre-wrap" }}>
+        <div className="panel summary" style={{ marginBottom: 24 }}>
           <h3>Summary</h3>
-          {summary}
+          <ReactMarkdown>{summary}</ReactMarkdown>
         </div>
       )}
 
@@ -109,10 +122,27 @@ function SharePanel({ documentId }) {
       await shareDocument(documentId, form.userId, form.permission);
       setGrants(await listPermissions(documentId));
       setForm({ userId: "", permission: "view" });
+      setError("");
     } catch (err) {
       setError(err.message);
     }
   }
+
+  async function revoke(grant) {
+    if (!confirm(`Remove ${grant.name || grant.email}'s access?`)) return;
+
+    const previous = grants;
+    setGrants((prev) => prev.filter((g) => g.id !== grant.id));
+    try {
+      await revokePermission(documentId, grant.user_id);
+    } catch (err) {
+      setError(err.message);
+      setGrants(previous);
+    }
+  }
+
+  // Someone who already has a grant shouldn't appear in the picker.
+  const available = users.filter((u) => !grants.some((g) => g.user_id === u.id));
 
   return (
     <div className="panel">
@@ -121,11 +151,22 @@ function SharePanel({ documentId }) {
       {grants.length === 0
         ? <p className="notice">Only you and administrators, for now.</p>
         : (
-          <ul style={{ listStyle: "none", padding: 0, marginBottom: 14 }}>
+          <ul className="grant-list">
             {grants.map((g) => (
               <li key={g.id} className="spread">
                 <span>{g.name || g.email}</span>
-                <span className="meta">{g.permission}</span>
+                <span className="row">
+                  <span className="meta">{g.permission}</span>
+                  <button
+                    className="quiet"
+                    type="button"
+                    title="Remove access"
+                    aria-label={`Remove access for ${g.name || g.email}`}
+                    onClick={() => revoke(g)}
+                  >
+                    ×
+                  </button>
+                </span>
               </li>
             ))}
           </ul>
@@ -134,7 +175,7 @@ function SharePanel({ documentId }) {
       <form className="row" onSubmit={submit}>
         <select value={form.userId} onChange={(e) => setForm({ ...form, userId: e.target.value })}>
           <option value="">Choose a colleague…</option>
-          {users.map((u) => (
+          {available.map((u) => (
             <option key={u.id} value={u.id}>{u.name || u.email}</option>
           ))}
         </select>
@@ -147,7 +188,7 @@ function SharePanel({ documentId }) {
             <option key={p} value={p}>{p}</option>
           ))}
         </select>
-        <button className="primary" type="submit">Share</button>
+        <button className="primary" type="submit" disabled={!form.userId}>Share</button>
       </form>
 
       {error && <p className="error">{error}</p>}
