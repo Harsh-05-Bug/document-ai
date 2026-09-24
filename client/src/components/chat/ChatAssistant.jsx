@@ -173,9 +173,17 @@ export default function ChatAssistant({ documentId, placeholder, openSessionId, 
       </div>
 
       <form className="composer" onSubmit={ask}>
-        <input
+        <textarea
+          rows={1}
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter sends; Shift+Enter starts a new line, as in most chat apps.
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              ask(e);
+            }
+          }}
           placeholder="What is the annual leave policy?"
           disabled={busy}
         />

@@ -234,7 +234,7 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
   min-height: 460px;
 }
 .chat-log { padding: 20px; display: flex; flex-direction: column; gap: 22px; flex: 1; }
-.turn.user { align-self: flex-end; max-width: 78%; background: var(--accent-soft); padding: 9px 13px; border-radius: 3px; }
+.turn.user { align-self: flex-end; max-width: 78%; background: var(--accent-soft); padding: 9px 13px; border-radius: 3px; white-space: pre-wrap; }
 .turn.assistant { max-width: 82%; }
 .turn.assistant .answer { font-family: var(--serif); font-size: 17px; line-height: 1.6; }
 
@@ -261,7 +261,14 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 @keyframes pulse { 50% { opacity: 0.3; } }
 @media (prefers-reduced-motion: reduce) { .trace .step.active::before { animation: none; } }
 
-.composer { border-top: 1px solid var(--line); padding: 12px; display: flex; gap: 8px; }
+.composer { border-top: 1px solid var(--line); padding: 12px; display: flex; gap: 8px; align-items: flex-end; }
+.composer textarea {
+  resize: none;
+  min-height: 40px;
+  max-height: 160px;
+  line-height: 1.5;
+  overflow-y: auto;
+}
 
 .ungrounded { border-left: 2px solid var(--warn); padding-left: 12px; color: var(--muted); }
 

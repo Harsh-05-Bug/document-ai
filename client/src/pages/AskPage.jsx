@@ -18,6 +18,19 @@ export default function AskPage() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  // Ctrl/Cmd+K starts a new conversation, the usual shortcut in chat apps.
+  useEffect(() => {
+    function onKeyDown(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setActiveId(null);
+        setResetKey((n) => n + 1);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   function startNew() {
     setActiveId(null);
     setResetKey((n) => n + 1);
