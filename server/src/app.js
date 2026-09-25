@@ -4,6 +4,7 @@ import { env } from "./config/env.js";
 import { pool } from "./db/pool.js";
 
 import authRoutes from "./routes/auth.routes.js";
+import workspacesRoutes from "./routes/workspaces.routes.js";
 import documentsRoutes from "./routes/documents.routes.js";
 import foldersRoutes from "./routes/folders.routes.js";
 import chatRoutes from "./routes/chat.routes.js";
@@ -32,6 +33,7 @@ export function createApp() {
   });
 
   app.use("/api/auth", authRoutes);
+  app.use("/api/workspaces", workspacesRoutes);
   app.use("/api/documents", documentsRoutes);
   app.use("/api/folders", foldersRoutes);
   app.use("/api/chat", chatRoutes);

@@ -17,22 +17,28 @@ const SELECT_DOC = `
 `;
 
 export async function createDocumentRecord({
-  ownerId, filename, storageKey, mimeType, sizeBytes, folderId, department, category,
+  ownerId, workspaceId, filename, storageKey, mimeType, sizeBytes, folderId, category,
 }) {
   const { rows } = await pool.query(
     `INSERT INTO documents
-       (owner_id, filename, storage_key, mime_type, size_bytes, folder_id, department, category, status)
+       (owner_id, workspace_id, filename, storage_key, mime_type, size_bytes, folder_id, category, status)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'processing')
      RETURNING *`,
-    [ownerId, filename, storageKey, mimeType, sizeBytes, folderId || null, department || null, category || null]
+    [ownerId, workspaceId, filename, storageKey, mimeType, sizeBytes, folderId || null, category || null]
   );
   return rows[0];
 }
 
-export async function listDocumentsForIds(ids, { folderId, status, tag } = {}) {
+/**
+ * Documents the caller may read, within one workspace.
+ *
+ * The workspace filter is applied here as well as in the id list it
+ * receives — belt and braces, because this query is what the UI shows.
+ */
+export async function listDocumentsForIds(ids, workspaceId, { folderId, status, tag } = {}) {
   if (!ids.length) return [];
-  const params = [ids];
-  let sql = `${SELECT_DOC} WHERE d.id = ANY($1::uuid[])`;
+  const params = [ids, workspaceId];
+  let sql = `${SELECT_DOC} WHERE d.id = ANY($1::uuid[]) AND d.workspace_id = $2`;
 
   if (folderId) { params.push(folderId); sql += ` AND d.folder_id = $${params.length}`; }
   if (status)   { params.push(status);   sql += ` AND d.status = $${params.length}`; }
@@ -87,11 +93,32 @@ export async function markProcessing(id) {
   return rows[0] || null;
 }
 
+/**
+ * Move a document to a folder.
+ *
+ * The folder must be in the same workspace: otherwise a document could
+ * be filed into another group's folder tree.
+ */
 export async function moveToFolder(id, folderId) {
+  if (!folderId) {
+    const { rows } = await pool.query(
+      `UPDATE documents SET folder_id = NULL, updated_at = now() WHERE id = $1 RETURNING *`,
+      [id]
+    );
+    return rows[0];
+  }
+
   const { rows } = await pool.query(
-    `UPDATE documents SET folder_id=$2, updated_at=now() WHERE id=$1 RETURNING *`,
-    [id, folderId || null]
+    `UPDATE documents d
+        SET folder_id = $2, updated_at = now()
+      FROM folders f
+      WHERE d.id = $1
+        AND f.id = $2
+        AND f.workspace_id = d.workspace_id
+      RETURNING d.*`,
+    [id, folderId]
   );
+  if (!rows[0]) throw ApiError.badRequest("That folder isn't in this workspace");
   return rows[0];
 }
 

@@ -11,6 +11,11 @@ export const share = asyncHandler(async (req, res) => {
     throw ApiError.badRequest(`Permission must be one of: ${LEVELS.join(", ")}`);
   }
 
+  // Sharing with someone outside the workspace would grant access
+  // without membership — a path straight around the isolation boundary.
+  const isMember = await perms.assertShareTargetIsMember(req.params.id, userId);
+  if (!isMember) throw ApiError.badRequest("That person isn't in this workspace");
+
   const row = await perms.shareDocument({
     documentId: req.params.id, userId, permission, grantedBy: req.user.id,
   });

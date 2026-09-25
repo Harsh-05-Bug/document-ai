@@ -2,11 +2,13 @@ import { ApiError, asyncHandler } from "../utils/ApiError.js";
 import * as chat from "../services/chat.service.js";
 
 export const createSession = asyncHandler(async (req, res) => {
-  res.status(201).json(await chat.createSession(req.user.id, req.body.title));
+  res.status(201).json(
+    await chat.createSession(req.user.id, req.body.workspaceId, req.body.title)
+  );
 });
 
 export const listSessions = asyncHandler(async (req, res) => {
-  res.json(await chat.listSessions(req.user.id));
+  res.json(await chat.listSessions(req.user.id, req.query.workspaceId));
 });
 
 export const getSession = asyncHandler(async (req, res) => {

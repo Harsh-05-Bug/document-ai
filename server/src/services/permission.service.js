@@ -1,16 +1,30 @@
 import { pool } from "../db/pool.js";
+import { getMembership } from "./workspace.service.js";
 
 /**
  * Permission model
  * ----------------
- *  admin role      -> 'admin' on every document
- *  document owner  -> 'admin' on their own documents
- *  manager role    -> 'download' on documents in their department
- *  explicit share  -> whatever level the share grants
+ * Two boundaries, always in this order:
  *
- * The strongest of those wins. Everything runs server-side: the client
- * never decides what it's allowed to see, and the vector search is
- * filtered by this list *before* retrieval (see chat.service.js).
+ *   1. WORKSPACE — is this user a member of the workspace that owns
+ *      the document? If not, nothing else is considered. Being an
+ *      owner of another workspace grants nothing here.
+ *
+ *   2. DOCUMENT — within that workspace:
+ *        workspace owner/admin -> 'admin' on every document in it
+ *        document owner        -> 'admin' on their own documents
+ *        explicit share        -> whatever level the share grants
+ *        any member            -> 'view', by default
+ *
+ * A workspace is a shared room: everyone inside can read what's in it.
+ * That is what makes the product work for a class or a team — a teacher
+ * uploads notes once rather than sharing them with thirty students.
+ * Shares are additive, granting more than view. Something that must
+ * not be seen belongs in a different workspace, not a hidden corner
+ * of this one.
+ *
+ * Viewers are the exception on the write side: they can read and ask,
+ * but never upload or change anything.
  */
 const RANK = { view: 1, comment: 2, download: 3, edit: 4, admin: 5 };
 
@@ -19,30 +33,35 @@ export const atLeast = (level, minimum) => (RANK[level] || 0) >= (RANK[minimum] 
 const strongest = (...levels) =>
   levels.filter(Boolean).sort((a, b) => RANK[b] - RANK[a])[0] || null;
 
-/** Document IDs the user may read. Used to scope lists, search and RAG. */
-export async function getAccessibleDocumentIds(user) {
-  if (user.role === "admin") {
-    const { rows } = await pool.query(`SELECT id FROM documents`);
-    return rows.map((r) => r.id);
-  }
+/**
+ * Document IDs the user may read inside one workspace.
+ * Used to scope lists, search and RAG.
+ *
+ * Returns an empty list for a workspace the user doesn't belong to,
+ * so a caller that forgets to check membership still leaks nothing.
+ */
+export async function getAccessibleDocumentIds(user, workspaceId) {
+  const role = await getMembership(user.id, workspaceId);
+  if (!role) return [];
 
+  // Every member reads everything in their own workspace — and nothing
+  // outside it. The workspace, not the document, is the boundary.
   const { rows } = await pool.query(
-    `SELECT DISTINCT d.id
-       FROM documents d
-       LEFT JOIN document_permissions p
-              ON p.document_id = d.id AND p.user_id = $1
-      WHERE d.owner_id = $1
-         OR p.user_id IS NOT NULL
-         OR ($2::text = 'manager' AND d.department IS NOT NULL AND d.department = $3)`,
-    [user.id, user.role, user.department]
+    `SELECT id FROM documents WHERE workspace_id = $1`,
+    [workspaceId]
   );
   return rows.map((r) => r.id);
 }
 
-/** The caller's effective permission on one document, or null. */
+/**
+ * The caller's effective permission on one document, or null.
+ *
+ * The document's own workspace is read from the row, so a caller can't
+ * gain access by naming a workspace they happen to belong to.
+ */
 export async function getPermissionLevel(user, documentId) {
   const { rows } = await pool.query(
-    `SELECT d.owner_id, d.department, p.permission
+    `SELECT d.owner_id, d.workspace_id, p.permission
        FROM documents d
        LEFT JOIN document_permissions p
               ON p.document_id = d.id AND p.user_id = $2
@@ -52,15 +71,16 @@ export async function getPermissionLevel(user, documentId) {
   const doc = rows[0];
   if (!doc) return null;
 
-  if (user.role === "admin") return "admin";
+  // Boundary one: membership of the document's workspace.
+  const role = await getMembership(user.id, doc.workspace_id);
+  if (!role) return null;
+
+  // Boundary two: role and shares within that workspace.
+  if (role === "owner" || role === "admin") return "admin";
   if (doc.owner_id === user.id) return "admin";
 
-  const departmental =
-    user.role === "manager" && doc.department && doc.department === user.department
-      ? "download"
-      : null;
-
-  return strongest(doc.permission, departmental);
+  // Everyone else reads by default; a share can grant more.
+  return strongest(doc.permission, "view");
 }
 
 export async function shareDocument({ documentId, userId, permission, grantedBy }) {
@@ -73,6 +93,22 @@ export async function shareDocument({ documentId, userId, permission, grantedBy 
     [documentId, userId, permission, grantedBy]
   );
   return rows[0];
+}
+
+/**
+ * Sharing only makes sense inside a workspace: granting access to
+ * someone who isn't a member would create a path around the boundary.
+ */
+export async function assertShareTargetIsMember(documentId, userId) {
+  const { rows } = await pool.query(
+    `SELECT 1
+       FROM documents d
+       JOIN workspace_members m
+         ON m.workspace_id = d.workspace_id AND m.user_id = $2
+      WHERE d.id = $1`,
+    [documentId, userId]
+  );
+  return rows.length > 0;
 }
 
 export async function listPermissions(documentId) {

@@ -1,6 +1,7 @@
 import { pool } from "../db/pool.js";
 import { ApiError } from "../utils/ApiError.js";
 import { getAccessibleDocumentIds } from "./permission.service.js";
+import { requireMembership } from "./workspace.service.js";
 import * as defaultAiClient from "./aiClient.service.js";
 import { logAudit } from "./audit.service.js";
 
@@ -20,34 +21,49 @@ export function setAiClient(client) {
   aiClient = client || defaultAiClient;
 }
 
-export async function createSession(userId, title) {
+/** A conversation belongs to one workspace and can't be moved. */
+export async function createSession(userId, workspaceId, title) {
+  await requireMembership(userId, workspaceId);
+
   const { rows } = await pool.query(
-    `INSERT INTO chat_sessions (user_id, title) VALUES ($1,$2) RETURNING *`,
-    [userId, title || "New conversation"]
+    `INSERT INTO chat_sessions (user_id, workspace_id, title) VALUES ($1,$2,$3) RETURNING *`,
+    [userId, workspaceId, title || "New conversation"]
   );
   return rows[0];
 }
 
-export async function listSessions(userId) {
+export async function listSessions(userId, workspaceId) {
+  await requireMembership(userId, workspaceId);
+
   const { rows } = await pool.query(
     `SELECT s.*, COUNT(m.id)::int AS message_count
        FROM chat_sessions s
        LEFT JOIN chat_messages m ON m.session_id = s.id
-      WHERE s.user_id = $1
+      WHERE s.user_id = $1 AND s.workspace_id = $2
       GROUP BY s.id
       ORDER BY s.created_at DESC`,
-    [userId]
+    [userId, workspaceId]
   );
   return rows;
 }
 
+/**
+ * Ownership of a conversation.
+ *
+ * Membership of the conversation's workspace is re-checked on every
+ * access: someone removed from a workspace must lose their old
+ * conversations too, since those hold answers drawn from its documents.
+ */
 async function assertOwnsSession(sessionId, userId) {
   const { rows } = await pool.query(
-    `SELECT id, title FROM chat_sessions WHERE id = $1 AND user_id = $2`,
+    `SELECT id, title, workspace_id FROM chat_sessions WHERE id = $1 AND user_id = $2`,
     [sessionId, userId]
   );
-  if (!rows[0]) throw ApiError.notFound("Conversation not found");
-  return rows[0];
+  const session = rows[0];
+  if (!session) throw ApiError.notFound("Conversation not found");
+
+  await requireMembership(userId, session.workspace_id);
+  return session;
 }
 
 export async function getSessionWithMessages(sessionId, userId) {
@@ -111,8 +127,10 @@ async function getRecentHistory(sessionId) {
 /**
  * The permission boundary, shared by the streaming and non-streaming paths.
  *
- *   1. work out which documents this user may read
- *   2. that list goes to the AI service, which filters the vector search
+ *   1. the conversation's workspace decides the scope — not anything
+ *      the client sends
+ *   2. within it, work out which documents this user may read
+ *   3. that list goes to the AI service, which filters the vector search
  *      BEFORE ranking — not as a post-filter on the model's answer
  *
  * Also loads history (before saving the new question, so the question
@@ -120,9 +138,9 @@ async function getRecentHistory(sessionId) {
  */
 async function prepareQuestion({ user, sessionId, question, documentId }) {
   if (!question?.trim()) throw ApiError.badRequest("Ask a question first");
-  await assertOwnsSession(sessionId, user.id);
+  const session = await assertOwnsSession(sessionId, user.id);
 
-  let allowedIds = await getAccessibleDocumentIds(user);
+  let allowedIds = await getAccessibleDocumentIds(user, session.workspace_id);
 
   // "Ask this document" mode: narrow to one doc, but only if it was
   // already in the allowed set.
@@ -139,11 +157,11 @@ async function prepareQuestion({ user, sessionId, question, documentId }) {
     [sessionId, text]
   );
 
-  return { text, allowedIds, history };
+  return { text, allowedIds, history, workspaceId: session.workspace_id };
 }
 
 /** Persist the assistant's turn, name the conversation, and audit it. */
-async function saveAnswer({ user, sessionId, documentId, text, allowedIds, answer, sources, searchQuery, latency }) {
+async function saveAnswer({ user, sessionId, documentId, workspaceId, text, allowedIds, answer, sources, searchQuery, latency }) {
   const { rows } = await pool.query(
     `INSERT INTO chat_messages (session_id, role, content, sources, latency_ms)
      VALUES ($1,'assistant',$2,$3,$4) RETURNING *`,
@@ -162,6 +180,7 @@ async function saveAnswer({ user, sessionId, documentId, text, allowedIds, answe
     action: "chat.query",
     documentId: documentId || null,
     metadata: {
+      workspace_id: workspaceId,
       question: text.slice(0, 500),
       search_query: (searchQuery || "").slice(0, 500),
       sources: sources.length,
@@ -175,13 +194,14 @@ async function saveAnswer({ user, sessionId, documentId, text, allowedIds, answe
 
 /** Ask and wait for the complete answer. */
 export async function askQuestion({ user, sessionId, question, documentId }) {
-  const { text, allowedIds, history } = await prepareQuestion({ user, sessionId, question, documentId });
+  const { text, allowedIds, history, workspaceId } =
+    await prepareQuestion({ user, sessionId, question, documentId });
 
   const started = Date.now();
   const result = await aiClient.requestQuery({ question: text, allowedDocumentIds: allowedIds, history });
 
   return saveAnswer({
-    user, sessionId, documentId, text, allowedIds,
+    user, sessionId, documentId, workspaceId, text, allowedIds,
     answer: result.answer,
     sources: result.sources || [],
     searchQuery: result.search_query,
@@ -201,7 +221,8 @@ export async function askQuestion({ user, sessionId, question, documentId }) {
  * part-way never leaves a half-written answer in the history.
  */
 export async function askQuestionStream({ user, sessionId, question, documentId, onEvent }) {
-  const { text, allowedIds, history } = await prepareQuestion({ user, sessionId, question, documentId });
+  const { text, allowedIds, history, workspaceId } =
+    await prepareQuestion({ user, sessionId, question, documentId });
 
   const started = Date.now();
   let searchQuery = "";
@@ -223,7 +244,7 @@ export async function askQuestionStream({ user, sessionId, question, documentId,
   if (!final) throw new ApiError(502, "The answer stream ended unexpectedly");
 
   const message = await saveAnswer({
-    user, sessionId, documentId, text, allowedIds,
+    user, sessionId, documentId, workspaceId, text, allowedIds,
     answer: final.answer,
     sources: final.sources || [],
     searchQuery,

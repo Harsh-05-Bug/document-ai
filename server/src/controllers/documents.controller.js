@@ -1,7 +1,9 @@
 import { asyncHandler, ApiError } from "../utils/ApiError.js";
 import { storage, buildStorageKey } from "../storage/index.js";
 import * as docs from "../services/document.service.js";
-import { getAccessibleDocumentIds } from "../services/permission.service.js";
+import {
+  getAccessibleDocumentIds, assertShareTargetIsMember,
+} from "../services/permission.service.js";
 import { requestIngest, requestSummary } from "../services/aiClient.service.js";
 import { logAudit } from "../services/audit.service.js";
 
@@ -46,19 +48,20 @@ export const upload = asyncHandler(async (req, res) => {
 
   const doc = await docs.createDocumentRecord({
     ownerId: req.user.id,
+    // requireWorkspace('member') has already confirmed membership.
+    workspaceId: req.workspaceId,
     filename: req.file.originalname,
     storageKey,
     mimeType: req.file.mimetype,
     sizeBytes: req.file.size,
     folderId: req.body.folderId,
     category: req.body.category,
-    department: req.user.department,
   });
 
   dispatchIngest(doc);
 
   logAudit({ userId: req.user.id, action: "document.upload", documentId: doc.id,
-    metadata: { filename: doc.filename, size_bytes: doc.size_bytes } });
+    metadata: { filename: doc.filename, size_bytes: doc.size_bytes, workspace_id: req.workspaceId } });
 
   res.status(201).json(doc);
 });
@@ -92,8 +95,8 @@ export const retry = asyncHandler(async (req, res) => {
 });
 
 export const list = asyncHandler(async (req, res) => {
-  const ids = await getAccessibleDocumentIds(req.user);
-  res.json(await docs.listDocumentsForIds(ids, {
+  const ids = await getAccessibleDocumentIds(req.user, req.workspaceId);
+  res.json(await docs.listDocumentsForIds(ids, req.workspaceId, {
     folderId: req.query.folderId, status: req.query.status, tag: req.query.tag,
   }));
 });
@@ -147,3 +150,6 @@ export const summarize = asyncHandler(async (req, res) => {
   logAudit({ userId: req.user.id, action: "document.summarize", documentId: doc.id });
   res.json({ summary, cached: false });
 });
+
+/** Exported for the sharing controller: a share target must be a member. */
+export { assertShareTargetIsMember };
