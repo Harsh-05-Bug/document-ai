@@ -25,9 +25,12 @@ export const askQuestion = (sessionId, question, documentId) =>
  *   { type: "done", message }   the saved message, with sources
  *
  * Uses fetch rather than axios because axios can't read a response
- * body incrementally in the browser. It repeats the two things the axios
- * interceptors do for every other call: attach the token, and send the
- * user to login when it has expired.
+ * body incrementally in the browser — which also means the axios
+ * interceptors don't apply, so the token is attached here.
+ *
+ * No workspace id is sent: the conversation already belongs to one,
+ * and the server takes the scope from there rather than from the
+ * client, so a request can't widen its own search.
  */
 export async function askQuestionStream(sessionId, question, documentId, { onEvent }) {
   const token = localStorage.getItem("token");
@@ -44,6 +47,7 @@ export async function askQuestionStream(sessionId, question, documentId, { onEve
   if (res.status === 401) {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
+    localStorage.removeItem("workspaceId");
     window.location.assign("/login");
     throw new Error("Your session has expired. Please sign in again.");
   }

@@ -6,4 +6,5 @@ export const login = (email, password) =>
 export const register = (payload) =>
   client.post("/auth/register", payload).then((r) => r.data);
 
-export const listUsers = () => client.get("/auth/users").then((r) => r.data);
+/** The signed-in user plus every workspace they belong to. */
+export const me = () => client.get("/auth/me").then((r) => r.data);

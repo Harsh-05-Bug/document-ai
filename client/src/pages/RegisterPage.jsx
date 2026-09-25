@@ -4,27 +4,22 @@ import { register } from "../api/auth.api.js";
 import { useAuth } from "../context/AuthContext.jsx";
 
 export default function RegisterPage() {
-  const [form, setForm] = useState({
-    name: "", email: "", password: "", role: "employee", department: "",
-  });
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
   const { signIn } = useAuth();
   const navigate = useNavigate();
-
-  const update = (key) => (e) => setForm({ ...form, [key]: e.target.value });
+  const [form, setForm] = useState({ name: "", email: "", password: "", workspaceName: "" });
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
 
   async function submit(e) {
     e.preventDefault();
     setBusy(true);
     setError("");
     try {
-      const { token, user } = await register(form);
-      signIn(token, user);
-      navigate("/documents", { replace: true });
+      const { token, user, workspace } = await register(form);
+      signIn(token, user, [workspace]);
+      navigate("/documents");
     } catch (err) {
       setError(err.message);
-    } finally {
       setBusy(false);
     }
   }
@@ -34,38 +29,58 @@ export default function RegisterPage() {
       <form className="auth-card" onSubmit={submit}>
         <h1>Create an account</h1>
         <p className="notice">
-          Role decides what you can reach: employees see their own and shared documents,
-          managers also see their department's, admins see everything.
+          You'll get a workspace of your own — a shared space for a class, a team
+          or a group of friends. Invite people to it once you're in.
         </p>
 
         <div className="field">
-          <label htmlFor="name">Name</label>
-          <input id="name" value={form.name} onChange={update("name")} />
+          <label htmlFor="name">Your name</label>
+          <input
+            id="name"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+          />
         </div>
 
         <div className="field">
-          <label htmlFor="email">Work email</label>
-          <input id="email" type="email" value={form.email} onChange={update("email")} />
+          <label htmlFor="email">Email</label>
+          <input
+            id="email"
+            type="email"
+            autoComplete="email"
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+            required
+          />
         </div>
 
         <div className="field">
           <label htmlFor="password">Password</label>
-          <input id="password" type="password" autoComplete="new-password"
-                 value={form.password} onChange={update("password")} />
+          <input
+            id="password"
+            type="password"
+            autoComplete="new-password"
+            minLength={8}
+            value={form.password}
+            onChange={(e) => setForm({ ...form, password: e.target.value })}
+            required
+          />
+          <p className="notice" style={{ margin: "4px 0 0", fontSize: 12 }}>
+            At least 8 characters.
+          </p>
         </div>
 
         <div className="field">
-          <label htmlFor="department">Department</label>
-          <input id="department" placeholder="Finance" value={form.department} onChange={update("department")} />
-        </div>
-
-        <div className="field">
-          <label htmlFor="role">Role</label>
-          <select id="role" value={form.role} onChange={update("role")}>
-            <option value="employee">Employee</option>
-            <option value="manager">Manager</option>
-            <option value="admin">Administrator</option>
-          </select>
+          <label htmlFor="workspaceName">Workspace name</label>
+          <input
+            id="workspaceName"
+            placeholder="Physics 101"
+            value={form.workspaceName}
+            onChange={(e) => setForm({ ...form, workspaceName: e.target.value })}
+          />
+          <p className="notice" style={{ margin: "4px 0 0", fontSize: 12 }}>
+            Optional — we'll name one after you if you leave it blank.
+          </p>
         </div>
 
         {error && <p className="error">{error}</p>}
@@ -75,7 +90,7 @@ export default function RegisterPage() {
         </button>
 
         <p className="notice" style={{ marginTop: 16, marginBottom: 0 }}>
-          Already registered? <Link to="/login">Sign in</Link>
+          Already have an account? <Link to="/login">Sign in</Link>
         </p>
       </form>
     </div>

@@ -3,11 +3,12 @@ import { useNavigate, useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import ChatAssistant from "../components/chat/ChatAssistant.jsx";
 import StatusPill from "../components/common/StatusPill.jsx";
+import { useAuth } from "../context/AuthContext.jsx";
 import {
   getDocument, summarizeDocument, deleteDocument,
   shareDocument, listPermissions, revokePermission, openDocument,
 } from "../api/documents.api.js";
-import { listUsers } from "../api/auth.api.js";
+import { listPeople } from "../api/workspaces.api.js";
 
 export default function DocumentDetailPage() {
   const { id } = useParams();
@@ -103,17 +104,27 @@ export default function DocumentDetailPage() {
   );
 }
 
+/**
+ * Extra permissions on one document.
+ *
+ * Everyone in the workspace can already read it — that's what a shared
+ * space means. This panel grants more than that: edit, download, admin.
+ * The picker lists workspace members only, since granting access to an
+ * outsider would be a path around the workspace boundary.
+ */
 function SharePanel({ documentId }) {
-  const [users, setUsers] = useState([]);
+  const { workspaceId } = useAuth();
+  const [people, setPeople] = useState([]);
   const [grants, setGrants] = useState([]);
-  const [form, setForm] = useState({ userId: "", permission: "view" });
+  const [form, setForm] = useState({ userId: "", permission: "edit" });
   const [error, setError] = useState("");
 
   useEffect(() => {
-    Promise.all([listUsers(), listPermissions(documentId)])
-      .then(([u, g]) => { setUsers(u); setGrants(g); })
+    if (!workspaceId) return;
+    Promise.all([listPeople(workspaceId), listPermissions(documentId)])
+      .then(([p, g]) => { setPeople(p); setGrants(g); })
       .catch((err) => setError(err.message));
-  }, [documentId]);
+  }, [documentId, workspaceId]);
 
   async function submit(e) {
     e.preventDefault();
@@ -121,7 +132,7 @@ function SharePanel({ documentId }) {
     try {
       await shareDocument(documentId, form.userId, form.permission);
       setGrants(await listPermissions(documentId));
-      setForm({ userId: "", permission: "view" });
+      setForm({ userId: "", permission: "edit" });
       setError("");
     } catch (err) {
       setError(err.message);
@@ -129,7 +140,7 @@ function SharePanel({ documentId }) {
   }
 
   async function revoke(grant) {
-    if (!confirm(`Remove ${grant.name || grant.email}'s access?`)) return;
+    if (!confirm(`Remove ${grant.name || grant.email}'s extra access?`)) return;
 
     const previous = grants;
     setGrants((prev) => prev.filter((g) => g.id !== grant.id));
@@ -142,41 +153,42 @@ function SharePanel({ documentId }) {
   }
 
   // Someone who already has a grant shouldn't appear in the picker.
-  const available = users.filter((u) => !grants.some((g) => g.user_id === u.id));
+  const available = people.filter((p) => !grants.some((g) => g.user_id === p.id));
 
   return (
     <div className="panel">
-      <h3>Who can see this</h3>
+      <h3>Extra access</h3>
+      <p className="notice">
+        Everyone in this workspace can already read this document. Grant more here.
+      </p>
 
-      {grants.length === 0
-        ? <p className="notice">Only you and administrators, for now.</p>
-        : (
-          <ul className="grant-list">
-            {grants.map((g) => (
-              <li key={g.id} className="spread">
-                <span>{g.name || g.email}</span>
-                <span className="row">
-                  <span className="meta">{g.permission}</span>
-                  <button
-                    className="quiet"
-                    type="button"
-                    title="Remove access"
-                    aria-label={`Remove access for ${g.name || g.email}`}
-                    onClick={() => revoke(g)}
-                  >
-                    ×
-                  </button>
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
+      {grants.length > 0 && (
+        <ul className="grant-list">
+          {grants.map((g) => (
+            <li key={g.id} className="spread">
+              <span>{g.name || g.email}</span>
+              <span className="row">
+                <span className="meta">{g.permission}</span>
+                <button
+                  className="quiet"
+                  type="button"
+                  title="Remove extra access"
+                  aria-label={`Remove extra access for ${g.name || g.email}`}
+                  onClick={() => revoke(g)}
+                >
+                  ×
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <form className="row" onSubmit={submit}>
         <select value={form.userId} onChange={(e) => setForm({ ...form, userId: e.target.value })}>
-          <option value="">Choose a colleague…</option>
-          {available.map((u) => (
-            <option key={u.id} value={u.id}>{u.name || u.email}</option>
+          <option value="">Choose someone…</option>
+          {available.map((p) => (
+            <option key={p.id} value={p.id}>{p.name || p.email}</option>
           ))}
         </select>
         <select
@@ -184,11 +196,11 @@ function SharePanel({ documentId }) {
           value={form.permission}
           onChange={(e) => setForm({ ...form, permission: e.target.value })}
         >
-          {["view", "comment", "download", "edit", "admin"].map((p) => (
+          {["comment", "download", "edit", "admin"].map((p) => (
             <option key={p} value={p}>{p}</option>
           ))}
         </select>
-        <button className="primary" type="submit" disabled={!form.userId}>Share</button>
+        <button className="primary" type="submit" disabled={!form.userId}>Grant</button>
       </form>
 
       {error && <p className="error">{error}</p>}
