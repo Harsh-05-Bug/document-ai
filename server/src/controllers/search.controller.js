@@ -3,13 +3,22 @@ import { keywordSearch } from "../services/search.service.js";
 import { getAccessibleDocumentIds } from "../services/permission.service.js";
 import { requestSemanticSearch } from "../services/aiClient.service.js";
 
+/**
+ * Search is a second path to the same content as the question endpoint,
+ * so it carries the same boundary: the id list comes from the caller's
+ * membership of req.workspaceId, and the vector search is filtered by
+ * that list before ranking.
+ */
+
 export const keyword = asyncHandler(async (req, res) => {
-  const ids = await getAccessibleDocumentIds(req.user);
+  const ids = await getAccessibleDocumentIds(req.user, req.workspaceId);
   res.json(await keywordSearch(ids, req.query.q));
 });
 
 export const semantic = asyncHandler(async (req, res) => {
-  const ids = await getAccessibleDocumentIds(req.user);
+  const ids = await getAccessibleDocumentIds(req.user, req.workspaceId);
+  if (!ids.length) return res.json([]);
+
   const result = await requestSemanticSearch({
     question: req.query.q, allowedDocumentIds: ids, topK: Number(req.query.k) || 8,
   });
@@ -22,7 +31,7 @@ export const semantic = asyncHandler(async (req, res) => {
  */
 export const hybrid = asyncHandler(async (req, res) => {
   const q = req.query.q;
-  const ids = await getAccessibleDocumentIds(req.user);
+  const ids = await getAccessibleDocumentIds(req.user, req.workspaceId);
   if (!q?.trim() || !ids.length) return res.json([]);
 
   const [kw, vec] = await Promise.all([
