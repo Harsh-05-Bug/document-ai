@@ -1,21 +1,35 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { joinWorkspace } from "../api/workspaces.api.js";
 import { useAuth } from "../context/AuthContext.jsx";
+
+export const PENDING_INVITE_KEY = "pendingInvite";
 
 /**
  * Redeems an invite link.
  *
- * Runs as soon as the page opens: someone clicking a link from a
- * message expects to land inside the workspace, not to be asked to
- * confirm something they already chose by clicking.
+ * Someone clicking a link from a message may not have an account yet.
+ * Rather than dropping them into normal signup — where they'd create a
+ * workspace they never wanted and never reach the invite — the token is
+ * held here and redeemed once they're signed in.
  */
 export default function JoinPage() {
   const { token } = useParams();
   const navigate = useNavigate();
-  const { refreshWorkspaces, switchWorkspace } = useAuth();
+  const { user, refreshWorkspaces, switchWorkspace } = useAuth();
   const [error, setError] = useState("");
   const attempted = useRef(false);
+
+  // Not signed in: remember the invite and come back to it.
+  if (!user) {
+    try {
+      sessionStorage.setItem(PENDING_INVITE_KEY, token);
+    } catch {
+      // Private browsing can refuse storage; the link still works
+      // once they sign in and open it again.
+    }
+    return <Navigate to="/register" replace />;
+  }
 
   useEffect(() => {
     // StrictMode runs effects twice in development; joining once is enough.
@@ -24,6 +38,7 @@ export default function JoinPage() {
 
     joinWorkspace(token)
       .then(async (workspace) => {
+        try { sessionStorage.removeItem(PENDING_INVITE_KEY); } catch { /* ignore */ }
         await refreshWorkspaces();
         switchWorkspace(workspace.id);
         navigate("/documents", { replace: true });

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { login } from "../api/auth.api.js";
 import { useAuth } from "../context/AuthContext.jsx";
+import { PENDING_INVITE_KEY } from "./JoinPage.jsx";
 
 export default function LoginPage() {
   const { signIn } = useAuth();
@@ -10,6 +11,10 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
+  const pendingInvite = (() => {
+    try { return sessionStorage.getItem(PENDING_INVITE_KEY); } catch { return null; }
+  })();
+
   async function submit(e) {
     e.preventDefault();
     setBusy(true);
@@ -17,7 +22,7 @@ export default function LoginPage() {
     try {
       const { token, user, workspaces } = await login(form.email, form.password);
       signIn(token, user, workspaces);
-      navigate("/ask");
+      navigate(pendingInvite ? `/join/${pendingInvite}` : "/ask", { replace: true });
     } catch (err) {
       setError(err.message);
       setBusy(false);
@@ -28,7 +33,11 @@ export default function LoginPage() {
     <div className="auth">
       <form className="auth-card" onSubmit={submit}>
         <h1>Sign in</h1>
-        <p className="notice">Ask questions about your group's documents.</p>
+        <p className="notice">
+          {pendingInvite
+            ? "Sign in and we'll take you to the workspace you were invited to."
+            : "Ask questions about your group's documents."}
+        </p>
 
         <div className="field">
           <label htmlFor="email">Email</label>

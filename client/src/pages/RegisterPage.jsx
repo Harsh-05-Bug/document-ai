@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { register } from "../api/auth.api.js";
 import { useAuth } from "../context/AuthContext.jsx";
+import { PENDING_INVITE_KEY } from "./JoinPage.jsx";
 
 export default function RegisterPage() {
   const { signIn } = useAuth();
@@ -10,14 +11,21 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
+  // Arrived from an invite link: they're joining a workspace, not
+  // making one, so don't ask them to name anything.
+  const pendingInvite = (() => {
+    try { return sessionStorage.getItem(PENDING_INVITE_KEY); } catch { return null; }
+  })();
+
   async function submit(e) {
     e.preventDefault();
     setBusy(true);
     setError("");
     try {
-      const { token, user, workspace } = await register(form);
+      const payload = pendingInvite ? { ...form, workspaceName: "" } : form;
+      const { token, user, workspace } = await register(payload);
       signIn(token, user, [workspace]);
-      navigate("/documents");
+      navigate(pendingInvite ? `/join/${pendingInvite}` : "/documents", { replace: true });
     } catch (err) {
       setError(err.message);
       setBusy(false);
@@ -29,8 +37,9 @@ export default function RegisterPage() {
       <form className="auth-card" onSubmit={submit}>
         <h1>Create an account</h1>
         <p className="notice">
-          You'll get a workspace of your own — a shared space for a class, a team
-          or a group of friends. Invite people to it once you're in.
+          {pendingInvite
+            ? "Sign up and we'll take you straight into the workspace you were invited to."
+            : "You'll get a workspace of your own — a shared space for a class, a team or a group of friends. Invite people to it once you're in."}
         </p>
 
         <div className="field">
@@ -70,18 +79,20 @@ export default function RegisterPage() {
           </p>
         </div>
 
-        <div className="field">
-          <label htmlFor="workspaceName">Workspace name</label>
-          <input
-            id="workspaceName"
-            placeholder="Physics 101"
-            value={form.workspaceName}
-            onChange={(e) => setForm({ ...form, workspaceName: e.target.value })}
-          />
-          <p className="notice" style={{ margin: "4px 0 0", fontSize: 12 }}>
-            Optional — we'll name one after you if you leave it blank.
-          </p>
-        </div>
+        {!pendingInvite && (
+          <div className="field">
+            <label htmlFor="workspaceName">Workspace name</label>
+            <input
+              id="workspaceName"
+              placeholder="Physics 101"
+              value={form.workspaceName}
+              onChange={(e) => setForm({ ...form, workspaceName: e.target.value })}
+            />
+            <p className="notice" style={{ margin: "4px 0 0", fontSize: 12 }}>
+              Optional — we'll name one after you if you leave it blank.
+            </p>
+          </div>
+        )}
 
         {error && <p className="error">{error}</p>}
 
