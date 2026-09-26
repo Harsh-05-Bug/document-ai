@@ -136,6 +136,80 @@ export async function removeMember({ workspaceId, userId, actorId }) {
   if (!rowCount) throw ApiError.notFound("Member not found");
 }
 
+/**
+ * Leave a workspace.
+ *
+ * An owner can't: they'd leave it with nobody able to manage it. They
+ * transfer ownership first, or delete the workspace.
+ */
+export async function leaveWorkspace({ workspaceId, userId }) {
+  const role = await getMembership(userId, workspaceId);
+  if (!role) throw ApiError.notFound("Workspace not found");
+  if (role === "owner") {
+    throw ApiError.badRequest(
+      "Owners can't leave. Transfer ownership to someone else, or delete the workspace."
+    );
+  }
+
+  await pool.query(
+    `DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2`,
+    [workspaceId, userId]
+  );
+}
+
+/**
+ * Hand ownership to another member.
+ *
+ * Both writes happen together: a workspace with two owners, or none,
+ * would be a worse state than either end of the swap.
+ */
+export async function transferOwnership({ workspaceId, fromUserId, toUserId }) {
+  if (fromUserId === toUserId) throw ApiError.badRequest("They already own it");
+
+  const target = await getMembership(toUserId, workspaceId);
+  if (!target) throw ApiError.notFound("That person isn't in this workspace");
+
+  return withTransaction(async (client) => {
+    await client.query(
+      `UPDATE workspace_members SET role = 'owner'
+        WHERE workspace_id = $1 AND user_id = $2`,
+      [workspaceId, toUserId]
+    );
+    await client.query(
+      `UPDATE workspace_members SET role = 'admin'
+        WHERE workspace_id = $1 AND user_id = $2`,
+      [workspaceId, fromUserId]
+    );
+  });
+}
+
+/**
+ * Delete a workspace and everything in it.
+ *
+ * Documents, chunks, conversations, members and invites all cascade
+ * from the foreign keys. Stored files are removed by the caller, which
+ * has access to the storage driver.
+ */
+export async function deleteWorkspace({ workspaceId, confirmName }) {
+  const { rows } = await pool.query(`SELECT name FROM workspaces WHERE id = $1`, [workspaceId]);
+  const workspace = rows[0];
+  if (!workspace) throw ApiError.notFound("Workspace not found");
+
+  // Typing the name is the last chance to notice what's about to happen.
+  if (String(confirmName || "").trim() !== workspace.name) {
+    throw ApiError.badRequest("Type the workspace name exactly to confirm");
+  }
+
+  // The storage keys are needed before the rows disappear.
+  const { rows: files } = await pool.query(
+    `SELECT storage_key FROM documents WHERE workspace_id = $1`,
+    [workspaceId]
+  );
+
+  await pool.query(`DELETE FROM workspaces WHERE id = $1`, [workspaceId]);
+  return files.map((f) => f.storage_key);
+}
+
 /* ------------------------------------------------------------ invites */
 
 export async function createInvite({ workspaceId, role = "member", userId, expiresInDays = 14 }) {

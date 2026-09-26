@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import {
   listMembers, updateMemberRole, removeMember,
   listInvites, createInvite, revokeInvite,
+  leaveWorkspace, transferOwnership, deleteWorkspace,
 } from "../api/workspaces.api.js";
 
 const ROLE_NOTE = {
@@ -13,14 +15,17 @@ const ROLE_NOTE = {
 };
 
 export default function MembersPage() {
-  const { workspaceId, workspace, role, user } = useAuth();
+  const { workspaceId, workspace, role, user, refreshWorkspaces } = useAuth();
+  const navigate = useNavigate();
+
   const [members, setMembers] = useState([]);
   const [invites, setInvites] = useState([]);
   const [inviteRole, setInviteRole] = useState("member");
+  const [confirmName, setConfirmName] = useState("");
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(null);
 
-  const canManagePeople = role === "owner";
+  const isOwner = role === "owner";
   const canInvite = role === "owner" || role === "admin";
 
   const refresh = useCallback(async () => {
@@ -34,6 +39,7 @@ export default function MembersPage() {
   }, [workspaceId, canInvite]);
 
   useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => { setConfirmName(""); }, [workspaceId]);
 
   const linkFor = (token) => `${window.location.origin}/join/${token}`;
 
@@ -90,6 +96,46 @@ export default function MembersPage() {
     } catch (err) {
       setError(err.message);
       setInvites(previous);
+    }
+  }
+
+  async function handOver(member) {
+    if (!confirm(
+      `Make ${member.name || member.email} the owner of ${workspace?.name}? ` +
+      `You'll become an admin.`
+    )) return;
+
+    setError("");
+    try {
+      await transferOwnership(workspaceId, member.user_id);
+      await refreshWorkspaces();
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function leave() {
+    if (!confirm(`Leave ${workspace?.name}? You'll need a new invite to come back.`)) return;
+
+    setError("");
+    try {
+      await leaveWorkspace(workspaceId);
+      await refreshWorkspaces();
+      navigate("/ask", { replace: true });
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function destroy() {
+    setError("");
+    try {
+      await deleteWorkspace(workspaceId, confirmName);
+      await refreshWorkspaces();
+      navigate("/ask", { replace: true });
+    } catch (err) {
+      setError(err.message);
     }
   }
 
@@ -153,13 +199,13 @@ export default function MembersPage() {
         </div>
       )}
 
-      <div className="panel">
+      <div className="panel" style={{ marginBottom: 24 }}>
         <h3>{members.length} {members.length === 1 ? "person" : "people"}</h3>
 
         <ul className="grant-list">
           {members.map((member) => {
             const isSelf = member.user_id === user?.id;
-            const isOwner = member.role === "owner";
+            const memberIsOwner = member.role === "owner";
 
             return (
               <li key={member.id} className="spread">
@@ -170,7 +216,7 @@ export default function MembersPage() {
                 </span>
 
                 <span className="row">
-                  {canManagePeople && !isSelf && !isOwner ? (
+                  {isOwner && !isSelf && !memberIsOwner ? (
                     <select
                       style={{ maxWidth: 130 }}
                       value={member.role}
@@ -184,16 +230,68 @@ export default function MembersPage() {
                     <span className="meta">{member.role}</span>
                   )}
 
-                  {canManagePeople && !isSelf && !isOwner && (
-                    <button className="quiet" type="button" onClick={() => remove(member)}>
-                      ×
-                    </button>
+                  {isOwner && !isSelf && !memberIsOwner && (
+                    <>
+                      <button
+                        className="quiet"
+                        type="button"
+                        title="Make owner"
+                        onClick={() => handOver(member)}
+                      >
+                        Make owner
+                      </button>
+                      <button className="quiet" type="button" onClick={() => remove(member)}>
+                        ×
+                      </button>
+                    </>
                   )}
                 </span>
               </li>
             );
           })}
         </ul>
+      </div>
+
+      {/* Leaving and deleting are separate: one affects only you, the
+          other destroys everyone's documents. */}
+      <div className="panel danger-zone">
+        <h3>Leaving this workspace</h3>
+
+        {isOwner ? (
+          <>
+            <p className="notice">
+              You own {workspace?.name}. To leave, make someone else the owner first.
+              Deleting removes every document, conversation and person in it, for
+              everyone. It can't be undone.
+            </p>
+
+            <div className="row">
+              <input
+                placeholder={`Type "${workspace?.name}" to confirm`}
+                value={confirmName}
+                onChange={(e) => setConfirmName(e.target.value)}
+              />
+              <button
+                className="danger-outline"
+                type="button"
+                onClick={destroy}
+                disabled={confirmName.trim() !== workspace?.name}
+              >
+                Delete workspace
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="notice">
+              You'll lose access to its documents and need a new invite to come back.
+              Nothing is deleted for anyone else.
+            </p>
+            <button className="danger-outline" type="button" onClick={leave}>
+              Leave {workspace?.name}
+            </button>
+          </>
+        )}
       </div>
     </>
   );

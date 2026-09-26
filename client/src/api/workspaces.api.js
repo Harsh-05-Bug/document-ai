@@ -18,6 +18,16 @@ export const updateMemberRole = (workspaceId, userId, role) =>
 export const removeMember = (workspaceId, userId) =>
   client.delete(`/workspaces/${workspaceId}/members/${userId}`);
 
+export const leaveWorkspace = (workspaceId) =>
+  client.post(`/workspaces/${workspaceId}/leave`);
+
+export const transferOwnership = (workspaceId, userId) =>
+  client.post(`/workspaces/${workspaceId}/transfer`, { userId });
+
+/** Destructive and cascading: the name must be typed to confirm. */
+export const deleteWorkspace = (workspaceId, confirmName) =>
+  client.delete(`/workspaces/${workspaceId}`, { data: { confirmName } });
+
 export const listInvites = (workspaceId) =>
   client.get(`/workspaces/${workspaceId}/invites`).then((r) => r.data);
 

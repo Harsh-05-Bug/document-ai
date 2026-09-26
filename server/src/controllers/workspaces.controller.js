@@ -1,4 +1,5 @@
 import { asyncHandler } from "../utils/ApiError.js";
+import { storage } from "../storage/index.js";
 import * as ws from "../services/workspace.service.js";
 import { listUsersInWorkspace } from "../services/auth.service.js";
 import { logAudit } from "../services/audit.service.js";
@@ -39,6 +40,41 @@ export const removeMember = asyncHandler(async (req, res) => {
   });
   logAudit({ userId: req.user.id, action: "workspace.member.remove",
     metadata: { workspace_id: req.workspaceId, removed: req.params.userId } });
+  res.status(204).end();
+});
+
+export const leave = asyncHandler(async (req, res) => {
+  await ws.leaveWorkspace({ workspaceId: req.workspaceId, userId: req.user.id });
+  logAudit({ userId: req.user.id, action: "workspace.leave",
+    metadata: { workspace_id: req.workspaceId } });
+  res.status(204).end();
+});
+
+export const transfer = asyncHandler(async (req, res) => {
+  await ws.transferOwnership({
+    workspaceId: req.workspaceId,
+    fromUserId: req.user.id,
+    toUserId: req.body.userId,
+  });
+  logAudit({ userId: req.user.id, action: "workspace.transfer",
+    metadata: { workspace_id: req.workspaceId, to: req.body.userId } });
+  res.status(204).end();
+});
+
+export const remove = asyncHandler(async (req, res) => {
+  const keys = await ws.deleteWorkspace({
+    workspaceId: req.workspaceId,
+    confirmName: req.body.confirmName,
+  });
+
+  // The rows are already gone; failing to delete a file shouldn't turn
+  // a successful delete into an error the user can't act on.
+  for (const key of keys) {
+    await storage.remove(key).catch((err) => console.error("orphaned file", key, err));
+  }
+
+  logAudit({ userId: req.user.id, action: "workspace.delete",
+    metadata: { workspace_id: req.workspaceId, files: keys.length } });
   res.status(204).end();
 });
 

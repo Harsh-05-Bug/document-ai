@@ -103,7 +103,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 button.primary:hover:not(:disabled) { background: var(--accent-hover); }
 button.quiet { border-color: transparent; background: transparent; color: var(--muted); padding: 4px 8px; }
 button.quiet:hover { color: var(--ink); }
-button.danger-outline { color: var(--danger); }
+button.danger-outline { color: var(--danger); white-space: nowrap; }
 button.danger-outline:hover:not(:disabled) { border-color: var(--danger); }
 
 input, select, textarea {
@@ -374,6 +374,10 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
   white-space: nowrap;
   min-width: 0;
 }
+
+/* Destructive actions are set apart so they can't be reached absently. */
+.danger-zone { border-color: var(--danger); }
+.danger-zone h3 { color: var(--danger); }
 
 /* ------------------------------------------------------ dashboard */
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); border: 1px solid var(--line); background: var(--surface); }

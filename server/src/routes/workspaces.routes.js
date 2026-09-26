@@ -17,11 +17,17 @@ router.post("/join/:token", ws.join);
 router.get("/:workspaceId/members", requireWorkspace(), ws.members);
 router.get("/:workspaceId/people",  requireWorkspace(), ws.people);
 
+// Any member can leave; the service refuses if they're the owner.
+router.post("/:workspaceId/leave", requireWorkspace(), ws.leave);
+
 router.patch("/:workspaceId/members/:userId",  requireWorkspace("owner"), ws.updateMember);
 router.delete("/:workspaceId/members/:userId", requireWorkspace("owner"), ws.removeMember);
 
-router.get("/:workspaceId/invites",             requireWorkspace("admin"), ws.listInvites);
-router.post("/:workspaceId/invites",            requireWorkspace("admin"), ws.createInvite);
+router.post("/:workspaceId/transfer", requireWorkspace("owner"), ws.transfer);
+router.delete("/:workspaceId",        requireWorkspace("owner"), ws.remove);
+
+router.get("/:workspaceId/invites",              requireWorkspace("admin"), ws.listInvites);
+router.post("/:workspaceId/invites",             requireWorkspace("admin"), ws.createInvite);
 router.delete("/:workspaceId/invites/:inviteId", requireWorkspace("admin"), ws.revokeInvite);
 
 export default router;
