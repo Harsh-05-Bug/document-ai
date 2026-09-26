@@ -1,15 +1,42 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import DocumentUpload from "../components/upload/DocumentUpload.jsx";
 import DocumentRow from "../components/documents/DocumentRow.jsx";
+import FolderBar from "../components/documents/FolderBar.jsx";
 import { useDocuments } from "../hooks/useDocuments.js";
+import { useAuth } from "../context/AuthContext.jsx";
+import { listFolders } from "../api/folders.api.js";
 
 export default function DocumentsPage() {
+  const { workspaceId, workspace, role } = useAuth();
   const [filter, setFilter] = useState("");
-  const { documents, loading, error, refresh } = useDocuments();
+  const [folderId, setFolderId] = useState(null);
+  const [folders, setFolders] = useState([]);
+
+  const { documents, loading, error, refresh } = useDocuments(
+    folderId ? { folderId } : {}
+  );
+
+  const refreshFolders = useCallback(
+    () => listFolders().then(setFolders).catch(() => {}),
+    []
+  );
+
+  useEffect(() => { refreshFolders(); }, [refreshFolders, workspaceId]);
+
+  // Switching workspace shouldn't leave a folder from the old one selected.
+  useEffect(() => { setFolderId(null); }, [workspaceId]);
 
   const visible = documents.filter((d) =>
     d.filename.toLowerCase().includes(filter.toLowerCase())
   );
+
+  const canUpload = role === "owner" || role === "admin" || role === "member";
+  const activeFolder = folders.find((f) => f.id === folderId);
+
+  function afterChange() {
+    refresh();
+    refreshFolders();
+  }
 
   return (
     <>
@@ -17,8 +44,9 @@ export default function DocumentsPage() {
         <div>
           <h1>Documents</h1>
           <p>
-            Uploaded files are split into passages and indexed for search. That
-            usually takes a few seconds; the status updates on its own.
+            Everyone in {workspace?.name || "this workspace"} can read these and ask
+            questions about them. Uploaded files are split into passages and indexed
+            for search — that usually takes a few seconds.
           </p>
         </div>
         <input
@@ -29,7 +57,20 @@ export default function DocumentsPage() {
         />
       </div>
 
-      <DocumentUpload onUploaded={refresh} />
+      <FolderBar
+        folders={folders}
+        activeId={folderId}
+        onSelect={setFolderId}
+        onChanged={refreshFolders}
+      />
+
+      {canUpload ? (
+        <DocumentUpload folderId={folderId} onUploaded={afterChange} />
+      ) : (
+        <p className="notice">
+          You're a viewer here, so you can read and ask questions but not upload.
+        </p>
+      )}
 
       {error && <p className="error" style={{ marginTop: 16 }}>{error}</p>}
 
@@ -38,13 +79,20 @@ export default function DocumentsPage() {
       ) : visible.length === 0 ? (
         <p className="empty">
           {documents.length === 0
-            ? "Nothing here yet. Upload a policy, handbook or report to get started."
+            ? activeFolder
+              ? `Nothing in ${activeFolder.name} yet.`
+              : "Nothing here yet. Upload a document to get started."
             : "No documents match that filter."}
         </p>
       ) : (
         <div className="doc-list" style={{ marginTop: 24 }}>
           {visible.map((doc) => (
-            <DocumentRow key={doc.id} doc={doc} onChanged={refresh} />
+            <DocumentRow
+              key={doc.id}
+              doc={doc}
+              folders={folders}
+              onChanged={afterChange}
+            />
           ))}
         </div>
       )}
