@@ -1,7 +1,14 @@
 import { pool } from "../db/pool.js";
 
-/** Everything here is scoped to the document IDs the caller can see. */
-export async function overview(allowedIds, userId) {
+/**
+ * Everything here is scoped twice: documents by the IDs the caller can
+ * see, and questions by the workspace they were asked in.
+ *
+ * Without the second scope the Activity page would count a user's
+ * questions from every workspace they belong to, so the numbers would
+ * disagree with the documents shown beside them.
+ */
+export async function overview(allowedIds, userId, workspaceId) {
   const ids = allowedIds.length ? allowedIds : [null];
 
   const [totals, questions, unanswered] = await Promise.all([
@@ -19,15 +26,16 @@ export async function overview(allowedIds, userId) {
       `SELECT COUNT(*)::int AS asked
          FROM chat_messages m
          JOIN chat_sessions s ON s.id = m.session_id
-        WHERE m.role='user' AND s.user_id = $1`,
-      [userId]
+        WHERE m.role='user' AND s.user_id = $1 AND s.workspace_id = $2`,
+      [userId, workspaceId]
     ),
     pool.query(
       `SELECT COUNT(*)::int AS ungrounded
          FROM chat_messages m
          JOIN chat_sessions s ON s.id = m.session_id
-        WHERE m.role='assistant' AND s.user_id=$1 AND jsonb_array_length(m.sources)=0`,
-      [userId]
+        WHERE m.role='assistant' AND s.user_id = $1 AND s.workspace_id = $2
+          AND jsonb_array_length(m.sources) = 0`,
+      [userId, workspaceId]
     ),
   ]);
 
@@ -55,16 +63,16 @@ export async function topDocuments(allowedIds, limit = 5) {
   return rows;
 }
 
-export async function topQuestions(userId, limit = 5) {
+export async function topQuestions(userId, workspaceId, limit = 5) {
   const { rows } = await pool.query(
     `SELECT lower(content) AS question, COUNT(*)::int AS times_asked
        FROM chat_messages m
        JOIN chat_sessions s ON s.id = m.session_id
-      WHERE m.role='user' AND s.user_id = $1
+      WHERE m.role='user' AND s.user_id = $1 AND s.workspace_id = $2
       GROUP BY lower(content)
       ORDER BY times_asked DESC, MAX(m.created_at) DESC
-      LIMIT $2`,
-    [userId, limit]
+      LIMIT $3`,
+    [userId, workspaceId, limit]
   );
   return rows;
 }
@@ -81,16 +89,17 @@ export async function categoryBreakdown(allowedIds) {
 }
 
 /** Question volume per day for the last 14 days, zero-filled. */
-export async function activity(userId, days = 14) {
+export async function activity(userId, workspaceId, days = 14) {
   const { rows } = await pool.query(
     `SELECT to_char(g.day,'YYYY-MM-DD') AS day,
             COUNT(m.id)::int AS questions
-       FROM generate_series(current_date - ($2::int - 1), current_date, '1 day') AS g(day)
-       LEFT JOIN chat_sessions s ON s.user_id = $1
+       FROM generate_series(current_date - ($3::int - 1), current_date, '1 day') AS g(day)
+       LEFT JOIN chat_sessions s
+              ON s.user_id = $1 AND s.workspace_id = $2
        LEFT JOIN chat_messages m
               ON m.session_id = s.id AND m.role='user' AND m.created_at::date = g.day
       GROUP BY g.day ORDER BY g.day`,
-    [userId, days]
+    [userId, workspaceId, days]
   );
   return rows;
 }
