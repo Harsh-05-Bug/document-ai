@@ -20,6 +20,13 @@ import { errorHandler, notFound } from "./middleware/errorHandler.js";
  */
 export function createApp() {
   const app = express();
+
+  // Render and similar put a proxy in front, so req.ip would otherwise
+  // be the proxy's address and every visitor would share one rate-limit
+  // bucket. Only enabled when TRUST_PROXY is set, since trusting the
+  // header without a proxy lets anyone spoof their IP.
+  if (env.trustProxy) app.set("trust proxy", 1);
+
   app.use(cors({ origin: env.clientOrigin }));
   app.use(express.json({ limit: "1mb" }));
 

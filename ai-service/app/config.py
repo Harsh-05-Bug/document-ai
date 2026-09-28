@@ -27,5 +27,11 @@ CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "80"))
 
 STORAGE_DRIVER = os.getenv("STORAGE_DRIVER", "local")
 STORAGE_DIR = os.getenv("STORAGE_DIR", "../storage")
+
+# S3-compatible storage. S3_ENDPOINT is set for anything that isn't
+# AWS itself — Supabase Storage, Cloudflare R2, MinIO.
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
+S3_ENDPOINT = os.getenv("S3_ENDPOINT") or None
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID") or None
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY") or None
