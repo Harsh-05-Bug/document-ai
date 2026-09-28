@@ -20,6 +20,11 @@ export default function ChatAssistant({ documentId, placeholder, openSessionId, 
 
   // Load an existing conversation, or clear the board for a new one.
   useEffect(() => {
+    // The parent sets openSessionId to the conversation this component
+    // just created, which would otherwise look like "open a different
+    // conversation" and wipe the answer currently streaming into it.
+    if (openSessionId && openSessionId === sessionId) return;
+
     setSessionId(openSessionId || null);
     setError("");
 
@@ -46,7 +51,7 @@ export default function ChatAssistant({ documentId, placeholder, openSessionId, 
     // Switching conversations quickly shouldn't let an older response
     // land after a newer one.
     return () => { cancelled = true; };
-  }, [openSessionId]);
+  }, [openSessionId, sessionId]);
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" });
