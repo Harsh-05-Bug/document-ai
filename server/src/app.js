@@ -23,13 +23,37 @@ export function createApp() {
   app.use(cors({ origin: env.clientOrigin }));
   app.use(express.json({ limit: "1mb" }));
 
+  /**
+   * Health check that names what's broken.
+   *
+   * A single ok/not-ok tells you nothing useful at 3am. This reports
+   * each dependency separately, so a failed question can be traced to
+   * the database or the AI service without reading three terminals.
+   */
   app.get("/health", async (req, res) => {
+    const checks = {};
+
     try {
       await pool.query("SELECT 1");
-      res.json({ status: "ok", database: "ok" });
-    } catch {
-      res.status(503).json({ status: "degraded", database: "unreachable" });
+      checks.database = "ok";
+    } catch (err) {
+      checks.database = `unreachable: ${err.message}`;
     }
+
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 4000);
+      const response = await fetch(`${env.aiServiceUrl}/health`, { signal: controller.signal });
+      clearTimeout(timer);
+
+      const body = await response.json().catch(() => ({}));
+      checks.ai_service = response.ok ? (body.status || "ok") : `error ${response.status}`;
+    } catch (err) {
+      checks.ai_service = err.name === "AbortError" ? "timed out" : "unreachable";
+    }
+
+    const healthy = Object.values(checks).every((v) => v === "ok");
+    res.status(healthy ? 200 : 503).json({ status: healthy ? "ok" : "degraded", ...checks });
   });
 
   app.use("/api/auth", authRoutes);
