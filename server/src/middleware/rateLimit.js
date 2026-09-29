@@ -9,7 +9,7 @@ import { ApiError } from "../utils/ApiError.js";
  * Deliberate trade-offs:
  *  - In memory, so counts reset on restart and aren't shared between
  *    instances. Running more than one process needs Redis instead.
- *  - Fixed windows allow a burst across a boundary (20 at 10:59, 20 at
+ *  - Fixed windows allow a burst across a boundary (60 at 10:59, 60 at
  *    11:00). A sliding window avoids that at the cost of more state.
  *    For protecting an API quota, the fixed window is enough.
  */
@@ -66,18 +66,27 @@ export function rateLimit({ limit, windowMs, name, keyOf, message }) {
   };
 }
 
-/** Questions are the expensive path: each one costs an embedding plus a completion. */
+/**
+ * Questions are the expensive path: each one costs an embedding plus a
+ * completion, and a follow-up costs a second completion to rewrite it.
+ * Sixty an hour is generous for a person and still bounds what one
+ * account can spend of the shared Gemini quota.
+ */
 export const questionLimiter = rateLimit({
   name: "question",
-  limit: 20,
+  limit: 60,
   windowMs: 60 * 60 * 1000,
   message: "You've asked a lot of questions in a short time. Please wait a few minutes.",
 });
 
-/** Uploads cost embeddings for every chunk, plus storage. */
+/**
+ * Uploads cost embeddings for every chunk, plus storage. A teacher
+ * adding a term's worth of notes in one sitting is normal; a hundred
+ * files an hour is not.
+ */
 export const uploadLimiter = rateLimit({
   name: "upload",
-  limit: 20,
+  limit: 60,
   windowMs: 60 * 60 * 1000,
   message: "Too many uploads in a short time. Please wait a few minutes.",
 });
@@ -86,6 +95,8 @@ export const uploadLimiter = rateLimit({
  * Login is limited per IP rather than per user: someone guessing
  * passwords doesn't have an account yet, and limiting by the submitted
  * email would let an attacker lock a real user out of their own account.
+ *
+ * This one stays tight — it protects passwords, not quota.
  */
 export const authLimiter = rateLimit({
   name: "auth",
