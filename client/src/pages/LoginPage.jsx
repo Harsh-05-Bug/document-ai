@@ -69,6 +69,13 @@ export default function LoginPage() {
           {busy ? "Signing in…" : "Sign in"}
         </button>
 
+        {busy && (
+          <p className="notice" style={{ marginTop: 12, fontSize: 13 }}>
+            This demo runs on free hosting and sleeps when idle. If it's been
+            quiet, the first sign-in can take up to a minute.
+          </p>
+        )}
+
         <p className="notice" style={{ marginTop: 16, marginBottom: 0 }}>
           New here? <Link to="/register">Create an account</Link>
         </p>
