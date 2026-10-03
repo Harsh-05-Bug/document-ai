@@ -100,6 +100,13 @@ export default function RegisterPage() {
           {busy ? "Creating…" : "Create account"}
         </button>
 
+        {busy && (
+          <p className="notice" style={{ marginTop: 12, fontSize: 13 }}>
+            This demo runs on free hosting and sleeps when idle. If it's been
+            quiet, creating your account can take up to a minute.
+          </p>
+        )}
+
         <p className="notice" style={{ marginTop: 16, marginBottom: 0 }}>
           Already have an account? <Link to="/login">Sign in</Link>
         </p>
