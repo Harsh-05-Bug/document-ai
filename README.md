@@ -360,3 +360,5 @@ slow connection.
 Password reset · nested folders · bulk document actions · a durable job queue
 (BullMQ / Celery) · tests for ingestion and chunking · automatic tagging at
 ingest time · per-workspace usage limits.
+The two Render services are described in [`render.yaml`](render.yaml).
+Secrets and per-environment URLs are left blank there and set in the dashboard.

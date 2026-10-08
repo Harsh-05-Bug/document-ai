@@ -1,0 +1,100 @@
+# Deployment blueprint for Render.
+#
+# Documents how the two backend services are built and configured. The
+# frontend lives on Vercel, Postgres on Neon, and files on Supabase
+# Storage, so none of those appear here.
+#
+# Values marked `sync: false` are secrets or per-environment URLs. Render
+# asks for them when the blueprint is applied; they are never stored in
+# git.
+
+services:
+  # ---------------------------------------------------------------- AI
+  - type: web
+    name: document-ai-brain
+    runtime: docker
+    region: singapore
+    plan: free
+    dockerContext: ./ai-service
+    dockerfilePath: ./ai-service/Dockerfile
+    # Safe to health-check: this only depends on the database.
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: INTERNAL_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_BASE_URL
+        value: https://generativelanguage.googleapis.com/v1beta/openai/
+      - key: EMBEDDING_MODEL
+        value: gemini-embedding-001
+      - key: EMBEDDING_DIM
+        value: "1536"
+      - key: LLM_MODEL
+        value: gemini-3.1-flash-lite
+      - key: TOP_K
+        value: "5"
+      - key: SIMILARITY_THRESHOLD
+        value: "0.35"
+      - key: CHUNK_TOKENS
+        value: "600"
+      - key: CHUNK_OVERLAP
+        value: "80"
+      - key: STORAGE_DRIVER
+        value: s3
+      - key: AWS_S3_BUCKET
+        sync: false
+      - key: AWS_REGION
+        sync: false
+      - key: S3_ENDPOINT
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+
+  # ---------------------------------------------------------------- API
+  - type: web
+    name: document-ai-api
+    runtime: docker
+    region: singapore
+    plan: free
+    dockerContext: ./server
+    dockerfilePath: ./server/Dockerfile
+    # No healthCheckPath on purpose. /health also checks the AI service,
+    # which sleeps on the free tier, so a probe would report this service
+    # as unhealthy whenever the other one is idle.
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: INTERNAL_API_KEY
+        sync: false
+      # Take this from the AI service's own deploy log. Render appends a
+      # suffix when a name is taken, so the URL can differ from the name.
+      - key: AI_SERVICE_URL
+        sync: false
+      # Exact origin of the frontend, no trailing slash.
+      - key: CLIENT_ORIGIN
+        sync: false
+      - key: TRUST_PROXY
+        value: "true"
+      - key: STORAGE_DRIVER
+        value: s3
+      - key: AWS_S3_BUCKET
+        sync: false
+      - key: AWS_REGION
+        sync: false
+      - key: S3_ENDPOINT
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: MAX_UPLOAD_MB
+        value: "25"
